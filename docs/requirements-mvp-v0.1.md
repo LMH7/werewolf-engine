@@ -88,7 +88,7 @@
 | DB | MySQL 8.0 | |
 | 缓存 | Redis 7.x | |
 | LLM（dev / prod） | **DeepSeek 官方 API**（OpenAI 兼容） | 默认 `deepseek-v4-flash`；可选 `deepseek-v4-pro`；**不经千问/百炼** |
-| LLM 密钥 | 环境变量 `DEEPSEEK_API_KEY` | 申请：https://platform.deepseek.com/api_keys |
+| LLM 密钥 | 环境变量 `DEEPSEEK_API_KEY` | 申请：https://platform.deepseek.com/api_keys；本地步骤见 [developer-local-setup.md](./developer-local-setup.md) |
 
 ---
 

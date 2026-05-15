@@ -4,7 +4,7 @@
 |------|-----|
 | 版本 | v0.1.5 |
 | 日期 | 2026-05-15 |
-| 关联文档 | [requirements-mvp-v0.1.md](./requirements-mvp-v0.1.md)（**v1.0.4**，含 R17a / DeepSeek LLM）、[architecture-design-spec.md](./architecture-design-spec.md) |
+| 关联文档 | [requirements-mvp-v0.1.md](./requirements-mvp-v0.1.md)（**v1.0.4**，含 R17a / DeepSeek LLM）、[architecture-design-spec.md](./architecture-design-spec.md)、[**开发者本地环境说明**](developer-local-setup.md) |
 | 项目 | werewolf-engine（**Agent Team 实战** — 12 人预女猎白 + 白痴，人机混排 MVP） |
 
 ---
