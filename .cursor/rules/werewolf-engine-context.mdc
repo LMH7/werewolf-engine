@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 权威文档（阅读顺序）
 
-- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.4**，业务规则、功能需求、接口 type/payload、`GamePhase`、里程碑与验收
+- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.7**，业务规则、功能需求、接口 type/payload、`GamePhase`（夜序预→女；猎人仅 `DAY_ANNOUNCE` 后）、**§4.3.7**、里程碑与验收
 - [docs/architecture-design-spec.md](docs/architecture-design-spec.md) — 架构、Agent Team、可观测
 - [docs/tech-selection-feasibility.md](docs/tech-selection-feasibility.md) — 技术选型与可行性
 - [docs/developer-local-setup.md](docs/developer-local-setup.md) — 本地环境（含 `DEEPSEEK_API_KEY` 等）
@@ -17,7 +17,7 @@ alwaysApply: true
 ## 课题与范围
 
 - **课题**：AI 狼人杀 — 多智能体协作与博弈的 Agent Team 实战
-- **板子**：12 人标准 **预女猎白 + 白痴**（固定单板；无警长、无守卫等）
+- **板子**：12 人标准 **预女猎愚 + 愚者**（固定单板；无警长、无守卫等）
 - **核心**：服务端权威状态机 + 定向信息隔离（`PHASE_SYNC` / `scope`）+ 结构化 `action_log` 可观测
 - **包名**：`com.werewolfengine`
 

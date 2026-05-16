@@ -2,10 +2,12 @@ package com.werewolfengine.game;
 
 import com.werewolfengine.game.model.ActionAck;
 import com.werewolfengine.game.model.ActionErrorCode;
+import com.werewolfengine.game.model.DayAnnounceSource;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
+import com.werewolfengine.game.model.HunterShootContext;
 import com.werewolfengine.game.model.GameWinner;
 import com.werewolfengine.game.model.PlayerState;
 import com.werewolfengine.game.model.Role;
@@ -26,8 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Server-authoritative game state machine — night loop (wolf → witch → seer → settle),
- * hunter shoot, day discuss / vote, win check, next night.
+ * Server-authoritative game state machine — night loop (wolf → seer → witch → settle →
+ * {@link GamePhase#DAY_ANNOUNCE} → optional hunter), day discuss / vote, win check, next night.
  */
 @Component
 public class GameStateMachine {
@@ -96,8 +98,8 @@ public class GameStateMachine {
 
             return switch (room.getPhase()) {
                 case NIGHT_WOLF -> handleNightWolf(room, actor, command);
-                case NIGHT_WITCH -> handleNightWitch(room, actor, command);
                 case NIGHT_SEER -> handleNightSeer(room, actor, command);
+                case NIGHT_WITCH -> handleNightWitch(room, actor, command);
                 case HUNTER_SHOOT -> handleHunterShoot(room, actor, command);
                 case DAY_DISCUSS -> handleDayDiscuss(room, actor, command);
                 case DAY_VOTE -> handleDayVote(room, actor, command);
@@ -178,8 +180,8 @@ public class GameStateMachine {
         room.setPendingWolfKillTarget(resolved);
         room.clearWolfVotesAndLog();
 
-        ActionAck ack = ActionAck.ok("狼人阶段结束，刀口已结算", GamePhase.NIGHT_WITCH, null);
-        return Optional.of(runAutopilotNightPhases(room, enterNightWitch(room, ack)));
+        ActionAck ack = ActionAck.ok("狼人阶段结束，刀口已结算", GamePhase.NIGHT_SEER, null);
+        return Optional.of(runAutopilotNightPhases(room, enterNightSeer(room, ack)));
     }
 
     private static boolean witchCanAct(GameRoomState room) {
@@ -205,19 +207,19 @@ public class GameStateMachine {
      */
     private HandleActionResult runAutopilotNightPhases(GameRoomState room, HandleActionResult current) {
         HandleActionResult r = current;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 6; i++) {
+            if (room.getPhase() == GamePhase.NIGHT_SEER && !seerCanAct(room) && !room.isSeerActedThisNight()) {
+                room.setSeerActedThisNight(true);
+                ActionAck auto = ActionAck.ok("预言家已出局或未在场，本夜跳过查验", GamePhase.NIGHT_SEER, null);
+                r = enterNightWitch(room, auto);
+                continue;
+            }
             if (room.getPhase() == GamePhase.NIGHT_WITCH && !witchCanAct(room) && !room.isWitchActedThisNight()) {
                 room.setWitchUsedSaveTonight(false);
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
                 ActionAck auto = ActionAck.ok("女巫已出局或未在场，本夜跳过女巫阶段", GamePhase.NIGHT_WITCH, null);
-                r = enterSeerPhaseAlways(room, auto);
-                continue;
-            }
-            if (room.getPhase() == GamePhase.NIGHT_SEER && !seerCanAct(room) && !room.isSeerActedThisNight()) {
-                room.setSeerActedThisNight(true);
-                ActionAck auto = ActionAck.ok("预言家已出局或未在场，本夜跳过查验", GamePhase.NIGHT_SEER, null);
-                r = finishNightAfterSeer(room, auto);
+                r = finishNightAfterWitch(room, auto);
                 break;
             }
             break;
@@ -227,6 +229,7 @@ public class GameStateMachine {
 
     /**
      * PRD 夜晚顺序位：始终进入女巫阶段（即使女巫已死，便于 B 推送 PHASE_SYNC 阶段位）。
+     * 须在预言家阶段（含空过）之后调用。
      */
     private HandleActionResult enterNightWitch(GameRoomState room, ActionAck priorAck) {
         room.setPhase(GamePhase.NIGHT_WITCH);
@@ -239,9 +242,9 @@ public class GameStateMachine {
     }
 
     /**
-     * 始终进入预言家阶段位；预言家存活则等待 CHECK，否则仅广播阶段位后由 {@link #runAutopilotNightPhases} 空过。
+     * 始终进入预言家阶段位；预言家存活则等待 CHECK，否则由 {@link #runAutopilotNightPhases} 空过后进入女巫。
      */
-    private HandleActionResult enterSeerPhaseAlways(GameRoomState room, ActionAck priorAck) {
+    private HandleActionResult enterNightSeer(GameRoomState room, ActionAck priorAck) {
         room.setPhase(GamePhase.NIGHT_SEER);
         room.setSeerActedThisNight(false);
         if (seerCanAct(room)) {
@@ -265,7 +268,7 @@ public class GameStateMachine {
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
                 ActionAck ack = ActionAck.ok("女巫跳过", room.getPhase(), null);
-                yield runAutopilotNightPhases(room, enterSeerPhaseAlways(room, ack));
+                yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             case SAVE -> {
                 Integer kill = room.getPendingWolfKillTarget();
@@ -282,7 +285,7 @@ public class GameStateMachine {
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
                 ActionAck ack = ActionAck.ok("已使用解药", room.getPhase(), null);
-                yield runAutopilotNightPhases(room, enterSeerPhaseAlways(room, ack));
+                yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             case POISON -> {
                 Integer t = command.target();
@@ -303,7 +306,7 @@ public class GameStateMachine {
                 room.setWitchPoisonTargetTonight(t);
                 room.setWitchActedThisNight(true);
                 ActionAck ack = ActionAck.ok("已使用毒药", room.getPhase(), null);
-                yield runAutopilotNightPhases(room, enterSeerPhaseAlways(room, ack));
+                yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             default -> failAck(ActionErrorCode.INVALID_ACTION,
                     "Action not allowed in NIGHT_WITCH: " + command.action(), room);
@@ -340,30 +343,67 @@ public class GameStateMachine {
 
         String msg = result == SeerCheckResult.WOLF ? "查杀：狼人" : "查验：好人";
         ActionAck ack = ActionAck.ok(msg, room.getPhase(), null);
-        return finishNightAfterSeer(room, ack);
+        return runAutopilotNightPhases(room, enterNightWitch(room, ack));
     }
 
-    private HandleActionResult finishNightAfterSeer(GameRoomState room, ActionAck priorAck) {
+    /**
+     * 女巫阶段结束：应用夜晚死亡，胜负已分则结束；否则进入 {@link GamePhase#DAY_ANNOUNCE}（再由网关/定时器调
+     * {@link #advanceDayAnnounce} 进入猎人或讨论）。
+     */
+    private HandleActionResult finishNightAfterWitch(GameRoomState room, ActionAck priorAck) {
         NightResolver.applyNightDeaths(room);
-        return afterDeathsEvaluate(room, priorAck);
-    }
-
-    private HandleActionResult afterDeathsEvaluate(GameRoomState room, ActionAck priorAck) {
         GameWinner w = WinChecker.evaluate(room);
         if (w != null) {
             room.setWinner(w);
+            room.setPendingHunterAfterAnnounce(null);
             room.setPhase(GamePhase.GAME_OVER);
             room.setStatus(RoomStatus.ENDED);
             return HandleActionResult.of(priorAck, syncsAllAlive(room));
         }
-        // HUNTER_SHOOT 仅在规则触发时出现（如被狼刀死可开枪，见 PRD R7～R9），非“每夜必经位”
-        Integer hunterSeat = room.getHunterShooterSeat();
-        if (hunterSeat != null) {
-            room.setPhase(GamePhase.HUNTER_SHOOT);
-            return HandleActionResult.of(priorAck, List.of(PhaseSyncBuilder.forPlayer(room, hunterSeat)));
-        }
-        enterDayDiscuss(room);
+        room.setDayAnnounceSource(DayAnnounceSource.NIGHT_SETTLEMENT);
+        room.setPhase(GamePhase.DAY_ANNOUNCE);
         return HandleActionResult.of(priorAck, syncsAllAlive(room));
+    }
+
+    /**
+     * 离开 {@link GamePhase#DAY_ANNOUNCE}：有待开枪猎人则 {@link GamePhase#HUNTER_SHOOT}；否则首夜进入讨论，
+     * 或投票线进入 {@link GamePhase#CHECK_WIN} / 下一夜。
+     */
+    public HandleActionResult advanceDayAnnounce(String roomId) {
+        return withRoom(roomId, room -> {
+            if (room.getStatus() != RoomStatus.PLAYING) {
+                return failAck(ActionErrorCode.INVALID_PHASE, "Room is not playing", room);
+            }
+            if (room.getPhase() != GamePhase.DAY_ANNOUNCE) {
+                return failAck(ActionErrorCode.INVALID_PHASE, "当前非公布死讯阶段", room);
+            }
+            DayAnnounceSource src = room.getDayAnnounceSource();
+            Integer pending = room.getPendingHunterAfterAnnounce();
+            room.setDayAnnounceSource(null);
+            room.setPendingHunterAfterAnnounce(null);
+
+            if (pending != null) {
+                room.setHunterShootContext(
+                        src == DayAnnounceSource.NIGHT_SETTLEMENT
+                                ? HunterShootContext.NIGHT_DEATHS
+                                : HunterShootContext.DAY_EXILE);
+                room.setHunterShooterSeat(pending);
+                room.setPhase(GamePhase.HUNTER_SHOOT);
+                ActionAck ack = ActionAck.ok("公布结束，进入猎人阶段", room.getPhase(), null);
+                return HandleActionResult.of(ack, List.of(PhaseSyncBuilder.forPlayer(room, pending)));
+            }
+
+            if (src == DayAnnounceSource.NIGHT_SETTLEMENT) {
+                ActionAck ack = ActionAck.ok("公布结束，进入讨论", room.getPhase(), null);
+                enterDayDiscuss(room);
+                return HandleActionResult.of(ack, syncsAllAlive(room));
+            }
+            if (src == DayAnnounceSource.DAY_VOTE_EXILE) {
+                ActionAck ack = ActionAck.ok("公布结束", room.getPhase(), null);
+                return continueAfterVoteResolution(room, ack);
+            }
+            return failAck(ActionErrorCode.INVALID_PHASE, "公布阶段状态异常", room);
+        });
     }
 
     private HandleActionResult handleHunterShoot(GameRoomState room, PlayerState actor, GameActionCommand command) {
@@ -405,6 +445,9 @@ public class GameStateMachine {
     }
 
     private HandleActionResult afterHunterResolved(GameRoomState room, ActionAck priorAck) {
+        HunterShootContext ctx = room.getHunterShootContext();
+        room.setHunterShootContext(null);
+
         GameWinner w = WinChecker.evaluate(room);
         if (w != null) {
             room.setWinner(w);
@@ -412,8 +455,11 @@ public class GameStateMachine {
             room.setStatus(RoomStatus.ENDED);
             return HandleActionResult.of(priorAck, syncsAllAlive(room));
         }
-        enterDayDiscuss(room);
-        return HandleActionResult.of(priorAck, syncsAllAlive(room));
+        if (ctx == HunterShootContext.NIGHT_DEATHS) {
+            enterDayDiscuss(room);
+            return HandleActionResult.of(priorAck, syncsAllAlive(room));
+        }
+        return continueAfterVoteResolution(room, priorAck);
     }
 
     private void enterDayDiscuss(GameRoomState room) {
@@ -489,7 +535,7 @@ public class GameStateMachine {
 
     private HandleActionResult handleDayVote(GameRoomState room, PlayerState actor, GameActionCommand command) {
         if (!actor.isCanVote()) {
-            return failAck(ActionErrorCode.INVALID_ACTION, "白痴翻牌后不可投票", room);
+            return failAck(ActionErrorCode.INVALID_ACTION, "愚者翻牌后不可投票", room);
         }
         return switch (command.action()) {
             case VOTE, SKIP_VOTE -> {
@@ -551,15 +597,20 @@ public class GameStateMachine {
                     ex.setIdiotRevealed(true);
                     ex.setCanVote(false);
                 } else if (ex.getRole() == Role.HUNTER) {
-                    room.setHunterShooterSeat(exileSeat);
-                    room.setPhase(GamePhase.HUNTER_SHOOT);
-                    return HandleActionResult.of(priorAck, List.of(PhaseSyncBuilder.forPlayer(room, exileSeat)));
+                    room.setPendingHunterAfterAnnounce(exileSeat);
+                    room.setDayAnnounceSource(DayAnnounceSource.DAY_VOTE_EXILE);
+                    room.setPhase(GamePhase.DAY_ANNOUNCE);
+                    return HandleActionResult.of(priorAck, syncsAllAlive(room));
                 } else {
                     ex.setAlive(false);
                 }
             }
         }
 
+        return continueAfterVoteResolution(room, priorAck);
+    }
+
+    private HandleActionResult continueAfterVoteResolution(GameRoomState room, ActionAck priorAck) {
         room.setPhase(GamePhase.CHECK_WIN);
         GameWinner w = WinChecker.evaluate(room);
         if (w != null) {
@@ -567,12 +618,6 @@ public class GameStateMachine {
             room.setPhase(GamePhase.GAME_OVER);
             room.setStatus(RoomStatus.ENDED);
             return HandleActionResult.of(priorAck, syncsAllAlive(room));
-        }
-
-        if (room.getHunterShooterSeat() != null) {
-            int hid = room.getHunterShooterSeat();
-            room.setPhase(GamePhase.HUNTER_SHOOT);
-            return HandleActionResult.of(priorAck, List.of(PhaseSyncBuilder.forPlayer(room, hid)));
         }
 
         room.setRound(room.getRound() + 1);

@@ -81,6 +81,15 @@ public class InternalGameController {
         );
     }
 
+    @PostMapping("/rooms/{roomId}/advance-announce")
+    public Map<String, Object> advanceAnnounce(@PathVariable String roomId) {
+        GameEngineService.ActionResult result = gameEngine.advanceDayAnnounce(roomId);
+        return Map.of(
+                "ack", result.ack(),
+                "phaseSyncs", result.phaseSyncs()
+        );
+    }
+
     @PostMapping("/rooms/{roomId}/mock-wolves")
     public Map<String, Object> mockWolves(@PathVariable String roomId) {
         List<GameEngineService.ActionResult> results = gameEngine.runMockWolfActions(roomId);

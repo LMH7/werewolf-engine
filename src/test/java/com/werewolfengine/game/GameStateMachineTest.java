@@ -27,6 +27,34 @@ class GameStateMachineTest {
         }
     }
 
+    /** 狼刀后：预言家 → 女巫 → 公布死讯（测试内自动 advance）。 */
+    private void completeNightToAnnounce(String roomId, GameRoomState room) {
+        if (room.getPhase() == GamePhase.NIGHT_SEER && seerAlive(room)) {
+            int seer = room.seerSeat();
+            int checkTarget = room.alivePlayerIds().stream()
+                    .filter(id -> id != seer)
+                    .findFirst()
+                    .orElseThrow();
+            sm.handleAction(roomId,
+                    new GameActionCommand(seer, GameActionType.CHECK, checkTarget, GamePhase.NIGHT_SEER));
+            room = sm.getRoom(roomId).orElseThrow();
+        }
+        if (room.getPhase() == GamePhase.NIGHT_WITCH && witchAlive(room)) {
+            sm.handleAction(roomId,
+                    new GameActionCommand(room.witchSeat(), GameActionType.SKIP, null, GamePhase.NIGHT_WITCH));
+        }
+    }
+
+    private static boolean seerAlive(GameRoomState room) {
+        int ss = room.seerSeat();
+        return ss > 0 && room.getPlayer(ss) != null && room.getPlayer(ss).isAlive();
+    }
+
+    private static boolean witchAlive(GameRoomState room) {
+        int ws = room.witchSeat();
+        return ws > 0 && room.getPlayer(ws) != null && room.getPlayer(ws).isAlive();
+    }
+
     @Test
     void startGame_advancesToNightWolf() {
         String roomId = "r_test";
@@ -68,7 +96,7 @@ class GameStateMachineTest {
     }
 
     @Test
-    void allWolvesVote_movesToWitchOrSeer() {
+    void allWolvesVote_movesToSeerFirst() {
         String roomId = "r_wolf_done";
         sm.createRoom(roomId);
         sm.markAllReady(roomId);
@@ -83,10 +111,12 @@ class GameStateMachineTest {
 
         GameRoomState room = sm.getRoom(roomId).orElseThrow();
         assertThat(room.getPendingWolfKillTarget()).isEqualTo(target);
-        if (room.witchSeat() > 0 && room.getPlayer(room.witchSeat()).isAlive()) {
+        if (seerAlive(room)) {
+            assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_SEER);
+        } else if (witchAlive(room)) {
             assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_WITCH);
         } else {
-            assertThat(room.getPhase()).isIn(GamePhase.NIGHT_SEER, GamePhase.DAY_DISCUSS, GamePhase.GAME_OVER);
+            assertThat(room.getPhase()).isIn(GamePhase.DAY_ANNOUNCE, GamePhase.GAME_OVER);
         }
     }
 
@@ -129,7 +159,7 @@ class GameStateMachineTest {
     }
 
     @Test
-    void firstNight_witchSkip_seerCheck_reachesDayDiscuss() {
+    void firstNight_afterAnnounce_reachesDayDiscuss() {
         String roomId = "r_night1";
         sm.createRoom(roomId);
         sm.markAllReady(roomId);
@@ -142,25 +172,44 @@ class GameStateMachineTest {
 
         allWolvesKill(sm, roomId, r0, villager);
         GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        completeNightToAnnounce(roomId, room);
 
-        if (room.getPhase() == GamePhase.NIGHT_WITCH) {
-            int witch = room.witchSeat();
-            sm.handleAction(roomId,
-                    new GameActionCommand(witch, GameActionType.SKIP, null, GamePhase.NIGHT_WITCH));
-            room = sm.getRoom(roomId).orElseThrow();
-        }
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_ANNOUNCE);
+        assertThat(room.getPlayer(villager).isAlive()).isFalse();
 
-        if (room.getPhase() == GamePhase.NIGHT_SEER) {
-            int seer = room.seerSeat();
-            int checkTarget = room.alivePlayerIds().stream()
-                    .filter(id -> id != seer)
-                    .findFirst()
-                    .orElseThrow();
-            sm.handleAction(roomId,
-                    new GameActionCommand(seer, GameActionType.CHECK, checkTarget, GamePhase.NIGHT_SEER));
-            room = sm.getRoom(roomId).orElseThrow();
-        }
+        sm.advanceDayAnnounce(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_DISCUSS);
+        assertThat(room.getHunterShooterSeat()).isNull();
+    }
 
-        assertThat(room.getPhase()).isIn(GamePhase.DAY_DISCUSS, GamePhase.HUNTER_SHOOT, GamePhase.GAME_OVER);
+    @Test
+    void hunterKilledAtNight_entersHunterShootOnlyAfterAnnounce() {
+        String roomId = "r_hunter_night";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int hunter = room.getPlayers().values().stream()
+                .filter(p -> p.getRole() == Role.HUNTER)
+                .map(com.werewolfengine.game.model.PlayerState::getPlayerId)
+                .findFirst()
+                .orElseThrow();
+
+        allWolvesKill(sm, roomId, room, hunter);
+        room = sm.getRoom(roomId).orElseThrow();
+        completeNightToAnnounce(roomId, room);
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_ANNOUNCE);
+        assertThat(room.getPendingHunterAfterAnnounce()).isEqualTo(hunter);
+        assertThat(room.getHunterShooterSeat()).isNull();
+
+        sm.advanceDayAnnounce(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.HUNTER_SHOOT);
+        assertThat(room.getHunterShooterSeat()).isEqualTo(hunter);
     }
 }

@@ -5,7 +5,7 @@
 | 版本 | v1.0 |
 | 日期 | 2026-05-16 |
 | 读者 | 后端 / 全栈开发人员、小组技术成员 |
-| 关联 | [PRD v1.0.4](requirements-mvp-v0.1.md)、[技术选型 v0.1.5](tech-selection-feasibility.md)、[架构说明 v1.3](architecture-design-spec.md) |
+| 关联 | [PRD v1.0.5](requirements-mvp-v0.1.md)、[技术选型 v0.1.5](tech-selection-feasibility.md)、[架构说明 v1.3](architecture-design-spec.md) |
 
 本文档整理 **MVP 工程落地阶段** 中团队曾讨论过的技术疑问与最终决策，并给出 **可复制的本地启动步骤**。若与 PRD 冲突，以 PRD 为准；本文侧重「怎么在本机跑起来」。
 
@@ -191,7 +191,7 @@ langchain4j.open-ai.chat-model.timeout=3s
 
 | 主题 | 本文 | PRD / 技术选型 |
 |------|------|----------------|
-| LLM 厂商 | DeepSeek 官方 | PRD v1.0.4 §0.5、§4.5.6 |
+| LLM 厂商 | DeepSeek 官方 | PRD v1.0.5 §0.5、§4.5.6 |
 | 移除 Ollama / 百炼 dev 分叉 | §1.1、§1.2 | 技术选型 v0.1.5 §4.6 |
 | Docker 仅 MySQL + Redis | §4 | 架构 v1.3 §10.2 |
 | 单局单厂商单模型 | §1.2 | PRD §4.5.6（禁止同局混用多厂商） |

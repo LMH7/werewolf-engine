@@ -48,6 +48,14 @@ public class GameEngineService {
     }
 
     /**
+     * Advances {@link GamePhase#DAY_ANNOUNCE} (timer / gateway); not a player GAME_ACTION.
+     */
+    public ActionResult advanceDayAnnounce(String roomId) {
+        GameStateMachine.HandleActionResult result = stateMachine.advanceDayAnnounce(roomId);
+        return new ActionResult(stateMachine.toPayload(result.ack()), result.phaseSyncs());
+    }
+
+    /**
      * Runs Mock AI until every alive wolf has a KILL vote or phase leaves {@link GamePhase#NIGHT_WOLF}.
      */
     public List<ActionResult> runMockWolfActions(String roomId) {

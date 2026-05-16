@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** PRD §4.3.3 ROLE_ASSIGN — 4狼4民1白痴1预1女1猎. */
+/** PRD §4.3.3 ROLE_ASSIGN — 4狼4民1愚者1预1女1猎（角色枚举 {@link com.werewolfengine.game.model.Role#IDIOT}）. */
 final class RoleAssigner {
 
     private RoleAssigner() {

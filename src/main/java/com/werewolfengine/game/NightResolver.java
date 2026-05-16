@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * PRD §3.4 step 4–6 — apply wolf kill (respect save), poison; set hunter shoot if needed.
+ * PRD §3.4 — apply wolf kill (respect save), poison; record hunter eligibility after announce (R7).
  */
 final class NightResolver {
 
@@ -18,8 +18,9 @@ final class NightResolver {
     }
 
     /**
-     * Mutates room: deaths, bottles, clears night intents, sets hunterShooterSeat if needed.
-     * Caller must then set phase to HUNTER_SHOOT or DAY_ANNOUNCE / DAY_DISCUSS.
+     * Mutates room: deaths, bottles, clears night intents.
+     * Sets {@link GameRoomState#setPendingHunterAfterAnnounce} when a hunter may shoot after
+     * {@link com.werewolfengine.game.model.GamePhase#DAY_ANNOUNCE} (wolf kill only, not same-night poison on same seat).
      */
     static void applyNightDeaths(GameRoomState room) {
         Integer wolfTarget = room.getPendingWolfKillTarget();
@@ -78,14 +79,16 @@ final class NightResolver {
         room.clearNightIntent();
 
         room.setHunterShooterSeat(null);
+        Integer pendingHunter = null;
         if (hunterMayShootFromWolf && wolfTarget != null) {
             PlayerState h = room.getPlayer(wolfTarget);
             if (h != null && !h.isAlive()) {
                 boolean alsoPoisoned = poisonTarget != null && poisonTarget.equals(wolfTarget);
                 if (!alsoPoisoned) {
-                    room.setHunterShooterSeat(wolfTarget);
+                    pendingHunter = wolfTarget;
                 }
             }
         }
+        room.setPendingHunterAfterAnnounce(pendingHunter);
     }
 }

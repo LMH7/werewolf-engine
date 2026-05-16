@@ -1,8 +1,8 @@
-# 狼人杀后端系统需求文档（MVP v1.0.5）
+# 狼人杀后端系统需求文档（MVP v1.0.7）
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | v1.0.5（在 v1.0.4 基础上增补 **§4.3.7** 阶段位 / 死亡 / AI 可见不可动；**R17/R17a** 与 WS 消息 type/payload **v1.0.0 仍冻结**） |
+| 版本 | v1.0.7（**夜序**：`NIGHT_SEER` → `NIGHT_WITCH` 后结算；**猎人**：仅 `DAY_ANNOUNCE` 之后可 `HUNTER_SHOOT`（夜晚死讯、投票放逐猎人）；**R17/R17a** 与 WS 消息 type/payload **v1.0.0 仍冻结**） |
 | 日期 | 2026-05-16 |
 | 范围 | 后端核心系统；**观战 UI 为课题加分项**，规格见 §1.5 |
 | 项目名 | werewolf-engine |
@@ -18,7 +18,7 @@
 1. [业务需求](#1-业务需求)（含 [1.0 课题定位](#10-课题定位与能力分层)）  
 2. [用户需求与场景](#2-用户需求与场景)  
 3. [游戏规则](#3-游戏规则)  
-4. [功能需求](#4-功能需求)  
+4. [功能需求](#4-功能需求)（含 §4.3.7 阶段位/死亡与 AI）  
 5. [非功能需求](#5-非功能需求)  
 6. [接口规范](#6-接口规范)  
 7. [三人分工与模块结构](#7-三人分工与模块结构)  
@@ -63,7 +63,7 @@
 | `phase` / `GamePhase` | 游戏阶段枚举，服务端权威 |
 | `action` | 玩家在本阶段的操作类型，如 `KILL`、`VOTE` |
 | `scope` | 聊天可见范围：`ALL`、`WEREWOLF` |
-| 屠边 | 狼人阵营 vs 好人阵营；**神职**（预、女、猎、**白痴**）或 **平民**（`VILLAGER`×4）任一阵营全灭则狼赢 |
+| 屠边 | 狼人阵营 vs 好人阵营；**神职**（预、女、猎、**愚者**）或 **平民**（`VILLAGER`×4）任一阵营全灭则狼赢 |
 | Mock AI | 不调用 LLM，按规则随机/固定策略行动 |
 | Agent Team | 一局内多座位 AI 的集合；每座位独立目标与上下文，由 SM 统一调度 |
 | `action_log` | 对局结构化操作序列，用于可观测、复盘与评测（§4.7.3） |
@@ -127,7 +127,7 @@
 
 构建支持**人机混战**与**纯 AI 多 Agent 对局**的狼人杀后端（课题 Agent Team 的 runtime 底座）。核心差异化：
 
-- **12 人标准预女猎白 + 白痴局**（非多数开源项目的 6 人简化局）
+- **12 人标准预女猎愚 + 愚者局**（非多数开源项目的 6 人简化局）
 - **服务端权威状态机**（非纯 AI 协商推进；Agent 只提交意图）
 - **真人缺人时 AI 自动补位**；同时支持 **12 Agent 全自动**压测与演示（场景 S2）
 
@@ -147,7 +147,7 @@
 ### 1.3 业务边界（MVP 不做）
 
 - 语音 / 视频
-- 多板子（守卫、骑士等；**本 MVP 固定单板**：预女猎白 + 白痴）
+- 多板子（守卫、骑士等；**本 MVP 固定单板**：预女猎愚 + 愚者）
 - **警长**（上警、退水、警徽流）；**含：警长决定白天发言顺/逆时针**（见 R13；MVP 为**随机方向** + **时间锚点**首发言位）
 - **后端观战席位 / 观战专用协议**（加分项由**前端只读订阅**同一房间 WS 实现，不单独开 MVP 后端模式）
 - 排行榜 / 积分 / 好友（**进阶方向②** 可单独建设 Leaderboard，非 MVP）
@@ -225,12 +225,12 @@
 |------|------|------|
 | 狼人 | 4 | 狼人阵营 |
 | 平民 | 4 | 好人阵营（村民，`role=VILLAGER`） |
-| 白痴 | 1 | 好人阵营神职（「白」占神坑，与预女猎并列；见 R19～R21） |
+| 愚者 | 1 | 好人阵营神职（「白」占神坑，与预女猎并列；见 R19～R21） |
 | 预言家 | 1 | 好人阵营（神职） |
 | 女巫 | 1 | 好人阵营（神职） |
 | 猎人 | 1 | 好人阵营（神职） |
 
-**合计 12 人**：4 狼 + 4 民 + 1 白痴 + 预 + 女 + 猎。**不含**：守卫、警长。
+**合计 12 人**：4 狼 + 4 民 + 1 愚者 + 预 + 女 + 猎。**不含**：守卫、警长。
 
 ### 3.2 规则冻结表
 
@@ -244,7 +244,7 @@
 | R6 | 解药 / 毒药数量 | 各 **1** 瓶，全程 | 已冻结 |
 | R7 | 猎人被狼刀死 | **可开枪** | 已冻结 |
 | R8 | 猎人被毒死 | **不能开枪** | 已冻结 |
-| R9 | 猎人被投票放逐 | **可开枪**（放逐后立即进入猎人阶段） | 已冻结 |
+| R9 | 猎人被投票放逐 | **可开枪**；先 `VOTE_RESULT` 公布放逐，再 `DAY_ANNOUNCE`，再 `HUNTER_SHOOT`（超时默认 `SKIP`） | 已冻结 |
 | R10 | 狼人刀口不一致 | 30s 内收集各狼 `KILL`；**多数票**；平票取**最后提交**；仍平则**随机**存活非狼目标 | 已冻结 |
 | R11 | 狼人私聊 | 仅 `NIGHT_WOLF` 阶段，scope=`WEREWOLF` | 已冻结 |
 | R12 | 预言家查验结果 | 仅告知 **好人 / 狼人**（不暴露具体神职） | 已冻结 |
@@ -254,11 +254,11 @@
 | R16 | 警长 | **不进 MVP** | 已冻结 |
 | R17 | 狼人刀口目标（含自刀战术） | **`NIGHT_WOLF` 内**须先通过 `WOLF_CHAT`（R11）商议刀口策略。**允许**的 `KILL` 目标：① 任意**存活非狼**（**无需**先商议）；② **存活狼人**（含狼队友或**本人**，自刀战术）：**须满足 R17a**。最终刀口按 **R10** 票型决议。**禁止**：`target` 已死亡；非 `NIGHT_WOLF` 的 `KILL` | 已冻结 |
 | R17a | 刀狼队友 / 自刀的门闩 | 当 `KILL` 的 `target` 为**存活狼人**时，**当前 `NIGHT_WOLF` 阶段实例**内须已有 ≥1 条合法狼队频道消息（`CHAT_MESSAGE` 且 `scope=WEREWOLF`，或 `GAME_ACTION` 且 `action=WOLF_CHAT`），由**任意存活狼人**发出；否则拒绝 `KILL`，返回 **`WOLF_CHAT_REQUIRED`**。进入新的 `NIGHT_WOLF` 时重置门闩（见 §4.3.6） | 已冻结 |
-| R18 | 死人发言 / 投票 | **拒绝**（`is_alive=false`）；已翻牌白痴见 R19，仍可发言、不可投票 | 已冻结 |
-| R19 | 白痴被白天投票出局 | **翻牌公布身份**，不离场；`is_alive=true`；`can_vote=false`；**仍可发言**；广播 `GAME_EVENT`=`IDIOT_REVEALED` | 已冻结 |
-| R20 | 白痴被狼刀 / 女巫毒 | **正常死亡**，`is_alive=false`；猎人毒杀同 R8 | 已冻结 |
-| R21 | 屠边计数 | **平民**：仅 `role=VILLAGER`，共 4 人，**4 人全灭**（`is_alive=false`）则狼赢。**神职**：`SEER`,`WITCH`,`HUNTER`,`IDIOT` 共 4 人；**4 神全灭**则狼赢。白痴翻牌后仍 `is_alive=true` 时**仍占神坑**；白痴死亡（刀/毒）则神坑减员 | 已冻结 |
-| R22 | 白痴翻牌后投票 | `DAY_VOTE` 阶段若 `can_vote=false`，拒绝 `VOTE`，返回 `INVALID_ACTION` | 已冻结 |
+| R18 | 死人发言 / 投票 | **拒绝**（`is_alive=false`）；已翻牌愚者见 R19，仍可发言、不可投票 | 已冻结 |
+| R19 | 愚者被白天投票出局 | **翻牌公布身份**，不离场；`is_alive=true`；`can_vote=false`；**仍可发言**；广播 `GAME_EVENT`=`IDIOT_REVEALED` | 已冻结 |
+| R20 | 愚者被狼刀 / 女巫毒 | **正常死亡**，`is_alive=false`；猎人毒杀同 R8 | 已冻结 |
+| R21 | 屠边计数 | **平民**：仅 `role=VILLAGER`，共 4 人，**4 人全灭**（`is_alive=false`）则狼赢。**神职**：`SEER`,`WITCH`,`HUNTER`,`IDIOT` 共 4 人；**4 神全灭**则狼赢。愚者翻牌后仍 `is_alive=true` 时**仍占神坑**；愚者死亡（刀/毒）则神坑减员 | 已冻结 |
+| R22 | 愚者翻牌后投票 | `DAY_VOTE` 阶段若 `can_vote=false`，拒绝 `VOTE`，返回 `INVALID_ACTION` | 已冻结 |
 
 ### 3.3 角色技能摘要
 
@@ -268,19 +268,20 @@
 | 女巫 | 解药 | `NIGHT_WITCH` | 救当晚刀口；已用则不可再救 |
 | 女巫 | 毒药 | `NIGHT_WITCH` | 毒任意存活玩家；与解药同夜不可并用（R4） |
 | 预言家 | 查验 | `NIGHT_SEER` | 每晚必查 1 人，结果仅预言家可见 |
-| 猎人 | 开枪 | 死亡时子阶段 `HUNTER_SHOOT` | 见 R7～R9 |
-| 白痴 | 翻牌免疫放逐 | `DAY_VOTE` / `VOTE_RESULT` | 见 R19～R22；夜晚无主动技能；屠边计 **神职** |
+| 猎人 | 开枪 | **`HUNTER_SHOOT`** | 见 R7～R9；**仅**在 `DAY_ANNOUNCE` 之后进入，见 §3.4、§4.3.2 |
+| 愚者 | 翻牌免疫放逐 | `DAY_VOTE` / `VOTE_RESULT` | 见 R19～R22；夜晚无主动技能；屠边计 **神职** |
 | 平民 | — | 白天发言、投票 | — |
 
 ### 3.4 夜晚结算顺序（权威）
 
 ```
 1. 收集狼人刀口（NIGHT_WOLF 结束）
-2. 女巫决策：救 / 毒 / 跳过（NIGHT_WITCH 结束）
-3. 预言家查验（NIGHT_SEER 结束，仅记录）
-4. 结算死亡：应用狼刀（考虑解药）、毒药
-5. 若猎人死亡且可开枪 → 进入 HUNTER_SHOOT
-6. 天亮 `DAY_ANNOUNCE` 公布死讯：**已冻结**——全场仅公布**死亡名单**，不向好人侧区分死因类型（刀/毒/放逐等）；复盘在 `GAME_OVER` 中披露。
+2. 预言家查验（NIGHT_SEER 结束，仅记录）
+3. 女巫决策：救 / 毒 / 跳过（NIGHT_WITCH 结束）
+4. **夜晚死亡结算**：应用狼刀（考虑解药）、毒药，产生/更新死亡名单
+5. `DAY_ANNOUNCE` 公布死讯：**已冻结**——全场仅公布**死亡名单**，不向好人侧区分死因类型（刀/毒/放逐等）；复盘在 `GAME_OVER` 中披露
+6. **猎人开枪（条件触发）**：若步骤 4～5 涉及 R7（狼刀猎人且未同夜毒杀）或 R9（投票放逐猎人），在**公布死讯之后**进入 `HUNTER_SHOOT`（超时默认不开枪）；否则跳过
+7. 首夜：`HUNTER_SHOOT` 结束或无需开枪 → `DAY_DISCUSS`；白天放逐线：`HUNTER_SHOOT` 结束 → `CHECK_WIN`
 ```
 
 ---
@@ -386,9 +387,9 @@ WAITING
 ROLE_ASSIGN
 NIGHT_START
 NIGHT_WOLF
-NIGHT_WITCH
 NIGHT_SEER
-HUNTER_SHOOT          // 子阶段：猎人死亡后触发，非每夜必有
+NIGHT_WITCH
+HUNTER_SHOOT          // 独立 GamePhase：仅于 DAY_ANNOUNCE 之后（R7、R9），见 §4.3.2；**不**列入 NIGHT_* 顺序链
 DAY_ANNOUNCE
 DAY_DISCUSS
 DAY_VOTE
@@ -399,6 +400,8 @@ GAME_OVER
 
 #### 4.3.2 状态流转
 
+> **`HUNTER_SHOOT` 语义（v1.0.7）**：**仅**在 `DAY_ANNOUNCE` 之后进入（夜晚死讯公布、或投票放逐猎人后公布）。**不是** `NIGHT_WOLF → NIGHT_SEER → NIGHT_WITCH` 夜内顺序上的下一环。`NIGHT_WITCH` 结束后执行 §3.4 第 4 步死亡结算，再进入 `DAY_ANNOUNCE`。
+
 ```text
 WAITING
   --[12人全员ready + start]--> ROLE_ASSIGN
@@ -407,22 +410,23 @@ ROLE_ASSIGN
 NIGHT_START
   --[广播夜晚开始]--> NIGHT_WOLF
 NIGHT_WOLF
-  --[狼人阶段结束]--> NIGHT_WITCH
-NIGHT_WITCH
-  --[女巫阶段结束]--> NIGHT_SEER
+  --[狼人阶段结束]--> NIGHT_SEER
 NIGHT_SEER
-  --[预言家阶段结束]--> [若有猎人可开枪] HUNTER_SHOOT
-  --[否则] --> DAY_ANNOUNCE
-HUNTER_SHOOT
-  --[开枪或超时]--> DAY_ANNOUNCE
+  --[预言家阶段结束]--> NIGHT_WITCH
+NIGHT_WITCH
+  --[女巫阶段结束；执行 §3.4 夜晚死亡结算]--> DAY_ANNOUNCE
 DAY_ANNOUNCE
-  --[公布死讯]--> DAY_DISCUSS
+  --[满足猎人开枪条件 R7]--> HUNTER_SHOOT
+  --[不满足]--> DAY_DISCUSS
+HUNTER_SHOOT
+  --[开枪或超时 SKIP]--> DAY_DISCUSS
 DAY_DISCUSS
   --[讨论结束]--> DAY_VOTE
 DAY_VOTE
   --[投票结束]--> VOTE_RESULT
 VOTE_RESULT
-  --[公布放逐]--> CHECK_WIN
+  --[猎人被放逐 R9]--> DAY_ANNOUNCE --> HUNTER_SHOOT --> CHECK_WIN
+  --[其他]--> CHECK_WIN
 CHECK_WIN
   --[有胜负]--> GAME_OVER
   --[无胜负]--> NIGHT_START
@@ -430,18 +434,20 @@ GAME_OVER
   --[可选重置]--> WAITING
 ```
 
+> **白天线补充**：猎人被投票放逐（R9）时，**不**在 `VOTE_RESULT` 内直接进入 `HUNTER_SHOOT`；须先 `DAY_ANNOUNCE` 再猎人阶段，开枪结算后再 `CHECK_WIN`（屠边计入开枪所致死亡）。
+
 #### 4.3.3 各状态明细
 
 | Phase | 谁能行动 | 允许 action | 推送范围 | 超时(s) | 超时兜底 |
 |-------|----------|-------------|----------|---------|----------|
 | `WAITING` | 房主 start | — | 全员 | — | — |
-| `ROLE_ASSIGN` | 系统 | — | 全员（仅己角色私密字段） | 5 | 随机分配 4狼4民1白痴1预1女1猎 |
+| `ROLE_ASSIGN` | 系统 | — | 全员（仅己角色私密字段） | 5 | 随机分配 4狼4民1愚者1预1女1猎 |
 | `NIGHT_WOLF` | 存活狼人 | `KILL`, `WOLF_CHAT` | 狼人频道 + 各狼 `canAct` | 30 | 无有效票型时随机刀**存活非狼**；自刀战术须狼队主动投票（见 R17、R10） |
 | `NIGHT_WITCH` | **存活且角色为女巫的座位**可操作（见 §4.3.7：阶段枚举**仍进入面试**，主角已死时无人可点技能） | `SAVE`, `POISON`, `SKIP` | 仅女巫（存活可操作时）；**全员仍收本阶段 `PHASE_SYNC` 的合法字段**（`canAct` 对死者/非女巫为 `false`） | 30 | **阶段位不跳过**：倒计时须走完；若本夜**无可操作女巫**，由系统在阶段末执行等价 `SKIP`（与超时兜底一致，不得因「无人」而压缩或省略该 `GamePhase`） |
 | `NIGHT_SEER` | **存活且角色为预言家的座位**可操作 | `CHECK` | 仅预言家（存活可操作时）；**全员仍收本阶段合法 `PHASE_SYNC`** | 20 | **阶段位不跳过**：倒计时须走完；若**无可操作预言家**，由系统在阶段末执行等价「本夜无查验」/随机查验（与既有 Fallback 表一致，见 §4.5.4），**不得**因无人而省略 `NIGHT_SEER` 枚举阶段 |
-| `HUNTER_SHOOT` | **须开枪的猎人座位**（规则触发，见 R7～R9；与「每夜必经位」不同） | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP` |
-| `DAY_ANNOUNCE` | 系统 | — | 存活全员 | 5 | 自动进入讨论 |
-| `DAY_DISCUSS` | 当前发言者 | `SPEAK`, `SKIP_SPEAK` | 存活全员（**含已翻牌白痴**） | 60/人 | 跳过发言；`PHASE_SYNC` 须含 `speakAnchorSeat`、`speakDirection`、`currentSpeakerId`（见 R13） |
+| `HUNTER_SHOOT` | **须开枪的猎人座位**（R7、R9；**仅** `DAY_ANNOUNCE` 之后，见 §4.3.2） | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP`（默认不开枪） |
+| `DAY_ANNOUNCE` | 系统（B 定时或 `advanceDayAnnounce`） | — | 存活全员 | 5 | 自动进入 `HUNTER_SHOOT` 或 `DAY_DISCUSS` / `CHECK_WIN` |
+| `DAY_DISCUSS` | 当前发言者 | `SPEAK`, `SKIP_SPEAK` | 存活全员（**含已翻牌愚者**） | 60/人 | 跳过发言；`PHASE_SYNC` 须含 `speakAnchorSeat`、`speakDirection`、`currentSpeakerId`（见 R13） |
 | `DAY_VOTE` | `can_vote=true` 的存活玩家 | `VOTE`, `SKIP_VOTE` | 存活全员 | 30 | 弃票 |
 | `VOTE_RESULT` | 系统 | — | 全员 | 5 | 自动 |
 | `CHECK_WIN` | 系统 | — | — | 1 | 自动 |
@@ -485,11 +491,13 @@ GAME_OVER
 
 | 项 | 要求 |
 |----|------|
-| **阶段枚举** | 每一夜仍按 §4.3.2 进入 `NIGHT_WITCH` → `NIGHT_SEER`（再进入结算与白天）。**不因**女巫/预言家已死亡而合并或省略上述阶段名；实现上 B 仍应按阶段推送 `PHASE_SYNC`（可配合 `countdown` 跑满）。 |
+| **阶段枚举** | 每一夜仍按 §4.3.2 进入 `NIGHT_SEER` → `NIGHT_WITCH`（再死亡结算、`DAY_ANNOUNCE`）。**不因**女巫/预言家已死亡而合并或省略上述阶段名；实现上 B 仍应按阶段推送 `PHASE_SYNC`（可配合 `countdown` 跑满）。 |
 | **死亡座位** | `is_alive=false` 的座位：`PHASE_SYNC` 中 `canAct=false`；**仍接收**与本座位可见性一致的广播/定向消息（含阶段切换、死讯、公开票型等），便于 Agent **持续建模**与日志对齐。**禁止**死亡座位发起非规则允许的 `GAME_ACTION`。 |
 | **AI 座位** | 与真人同规则：存活时可由 `AIService`/Mock 生成意图 → SM；**死亡后**与上条相同——**可收不可动**（不调用 LLM 产出 `GAME_ACTION`，或调用结果仅记日志且 SM **一律拒绝**）。 |
-| **`HUNTER_SHOOT`** | **仅**在 R7～R9 触发时出现，**不属于**「每夜固定顺序位」；无开枪义务时**不**进入该阶段。 |
+| **`HUNTER_SHOOT`** | **仅**在 `DAY_ANNOUNCE` 之后、且 R7 或 R9 成立时出现；**不属于** `NIGHT_WOLF→NIGHT_SEER→NIGHT_WITCH` 夜内顺位；无开枪义务时**不**进入该阶段。 |
 | **与 §1.2 对齐** | 表列「存活玩家均能收到 `PHASE_SYNC`」仍指**对局信息权**；**死亡座位**对**允许其知晓**的字段仍须收到同步（否则 AI/真人复盘链断裂）。具体定向规则仍以 §4.6 / `PHASE_SYNC` 字段为准。 |
+
+> **实现阶段说明（非放宽产品语义）**：在**房间级定时器 / 网关**未接入前，`GameStateMachine` 可先在单事务内完成与「阶段末空过」**等价**的状态迁移，便于 Week1 联调；**对外协议与 B 侧推送**仍应按 `currentPhase` 与 `countdown` **分阶段**向各连接发 `PHASE_SYNC`，不得合并为「无女巫阶段」等省略语义的对外表述。
 
 ### 4.4 角色技能结算模块（A）
 
@@ -524,12 +532,12 @@ GAME_OVER
 
 - 输入：各存活且 `can_vote=true` 的玩家 `VOTE` / 弃票
 - 输出：`exiledPlayerId` 或 `null`（平票）
-- 若最高票为 **白痴**（R19）：不死亡；设置 `idiotRevealed=true`、`can_vote=false`；广播 `IDIOT_REVEALED`；**不**进入 `HUNTER_SHOOT`
+- 若最高票为 **愚者**（R19）：不死亡；设置 `idiotRevealed=true`、`can_vote=false`；广播 `IDIOT_REVEALED`；**不**进入 `HUNTER_SHOOT`
 - 若放逐猎人 → 进入 `HUNTER_SHOOT`
 
 #### 4.4.4 WinChecker
 
-神职集合：`{ SEER, WITCH, HUNTER, IDIOT }`（均按 `is_alive` 计数；白痴翻牌不离场仍算存活神职）。
+神职集合：`{ SEER, WITCH, HUNTER, IDIOT }`（均按 `is_alive` 计数；愚者翻牌不离场仍算存活神职）。
 
 | 条件 | 结果 |
 |------|------|
@@ -732,8 +740,8 @@ ws://{host}:{port}/ws/game?token={token}
 
 - 私密字段按角色填充，非本角色为 `null` 或省略
 - `wolfChatInPhase`：仅 `currentPhase==NIGHT_WOLF` 时出现；见 R17a、§4.3.6
-- `canVote`：白痴翻牌后为 `false`，其余存活玩家默认 `true`
-- `idiotRevealed`：仅白痴本人为 `true` 时可知己身份已公开；其他玩家通过 `GAME_EVENT` 获知
+- `canVote`：愚者翻牌后为 `false`，其余存活玩家默认 `true`
+- `idiotRevealed`：仅愚者本人为 `true` 时可知己身份已公开；其他玩家通过 `GAME_EVENT` 获知
 - **白天讨论**（`currentPhase == DAY_DISCUSS`）额外字段（见 R13）：
   - `speakAnchorSeat`：1～12，由进入本阶段时的服务端 Unix 秒 `T` 计算 `(T % 12) + 1`
   - `speakDirection`：`CLOCKWISE` | `COUNTER_CLOCKWISE`（MVP 每局随机；未来由警长设定）
@@ -789,7 +797,7 @@ ws://{host}:{port}/ws/game?token={token}
 }
 ```
 
-`GAME_EVENT` 示例（白痴翻牌）：
+`GAME_EVENT` 示例（愚者翻牌）：
 
 ```json
 {
@@ -800,7 +808,7 @@ ws://{host}:{port}/ws/game?token={token}
       "playerId": 7,
       "role": "IDIOT",
       "canVote": false,
-      "message": "7号玩家被投票出局，翻牌为白痴，不离场，失去投票权"
+      "message": "7号玩家被投票出局，翻牌为愚者，不离场，失去投票权"
     }
   }
 }
@@ -864,7 +872,7 @@ ws://{host}:{port}/ws/game?token={token}
 | role | ENUM NULL | `WEREWOLF`,`VILLAGER`,`IDIOT`,`SEER`,`WITCH`,`HUNTER` |
 | is_alive | BOOLEAN | |
 | is_ready | BOOLEAN | |
-| can_vote | BOOLEAN DEFAULT TRUE | 白痴翻牌后为 FALSE |
+| can_vote | BOOLEAN DEFAULT TRUE | 愚者翻牌后为 FALSE |
 | idiot_revealed | BOOLEAN DEFAULT FALSE | 仅 `role=IDIOT` 有意义 |
 | persona | VARCHAR(32) NULL | AI 性格 |
 
@@ -1179,12 +1187,20 @@ com.werewolfengine
          |          | NIGHT_SEER  |                   |
          |          +------+------+                   |
          |                 v                          |
-         |     +-------+---+---+                       |
-         |     | HUNTER_SHOOT| (optional)             |
-         |     +-------+---+                           |
-         |             v                              |
-         |          +-------------+                   |
-         |          | DAY_ANNOUNCE|                   |
+         |          (夜晚死亡结算)                     |
+         |                 v                          |
+         |     +--------+--------+                    |
+         |     | 须猎人开枪? |                       |
+         |     +--------+--------+                    |
+         |   是 |              | 否                  |
+         |      v              v                     |
+         |  +--------+    +-------------+             |
+         |  |HUNTER_ |    |DAY_ANNOUNCE |             |
+         |  |SHOOT   |    +-------------+             |
+         |  +---+----+                                |
+         |      v                                     |
+         |  +-------------+                           |
+         |  |DAY_ANNOUNCE |                           |
          |          +------+------+                   |
          |                 v                          |
          |          +-------------+                   |
@@ -1226,8 +1242,8 @@ com.werewolfengine
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v0.1 | 2026-05-15 | 初稿：后端 MVP 全量需求 |
-| v0.1.1 | 2026-05-15 | 12 人板纳入白痴；新增 R19～R22、DayResolver/WinChecker/PHASE_SYNC 字段 |
-| v0.1.2 | 2026-05-15 | 平民改回 **4**；白痴明确占神坑；R1/R21/WinChecker 与 ROLE_ASSIGN 与 12 人计数对齐 |
+| v0.1.1 | 2026-05-15 | 12 人板纳入愚者；新增 R19～R22、DayResolver/WinChecker/PHASE_SYNC 字段 |
+| v0.1.2 | 2026-05-15 | 平民改回 **4**；愚者明确占神坑；R1/R21/WinChecker 与 ROLE_ASSIGN 与 12 人计数对齐 |
 | v0.1.3 | 2026-05-15 | R17 允许狼人**自刀**；仍禁止刀存活狼队友。R13 发言位由**服务端当前时间**定锚点、MVP **随机**顺/逆；`PHASE_SYNC` 增加发言字段；警长版顺逆待做 |
 | v0.1.4 | 2026-05-15 | 运行时升级为 **Java 21**；开启 Spring **虚拟线程**；明确阶段推进不得忙等空转 |
 | v1.0.0 | 2026-05-15 | **PRD 全面冻结**（无开放待定项）；评审清单与 0.5 技术栈、11.2 P6 对齐；签字表默认版本 v1.0.0 |
@@ -1236,6 +1252,8 @@ com.werewolfengine
 | v1.0.3 | 2026-05-15 | **R17a**：服务端强制「刀存活狼人前本 `NIGHT_WOLF` 须先有狼队频道消息」；§4.3.6、`WOLF_CHAT_REQUIRED`、`PHASE_SYNC.wolfChatInPhase`、Redis 门闩键 |
 | v1.0.4 | 2026-05-16 | **LLM**：dev/prod 统一 **DeepSeek 官方 API**（`deepseek-v4-flash`）；移除 Ollama / 百炼 qwen-plus；§0.5、§4.5.6、§8.3 |
 | v1.0.5 | 2026-05-16 | **阶段位与死亡/AI**：新增 §4.3.7（`NIGHT_WITCH`/`NIGHT_SEER` 不省略、倒计时跑满、死后可见不可动）；修订 §4.3.3 表、§4.3.5 第 3 条、§4.5.8、§2.1.4 行为表。**不改变** v1.0.0 已冻结的胜负规则与消息 type 全集 |
+| v1.0.6 | 2026-05-16 | **`HUNTER_SHOOT` 语义**：明确为**死亡结算触发**，非 `NIGHT_*` 夜内线性下一环；修订 §3.4、§4.3.1～4.3.2、§4.3.3/§4.3.7、附录 A；**不改变** R7～R9 与 `GamePhase` 枚举名 |
+| v1.0.7 | 2026-05-16 | **夜序** `NIGHT_SEER`→`NIGHT_WITCH`；**猎人**仅 `DAY_ANNOUNCE` 后开枪（R7/R9）；实现 `advanceDayAnnounce`、§3.4/§4.3.2 与代码对齐 |
 
 ---
 
@@ -1257,7 +1275,7 @@ com.werewolfengine
 | R17a | 刀狼前狼队频道门闩 / `WOLF_CHAT_REQUIRED` | [ ] | |
 | R14-R15 | 投票 / 平票 / 超时弃票 | [ ] | |
 | R16 | 无警长 | [ ] | |
-| R19-R22 | 白痴规则 | [ ] | |
+| R19-R22 | 愚者规则 | [ ] | |
 
 ### 11.2 协议评审（B — prd-review-protocol）
 

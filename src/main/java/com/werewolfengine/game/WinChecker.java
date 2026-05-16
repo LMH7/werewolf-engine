@@ -8,7 +8,7 @@ import com.werewolfengine.game.model.Role;
 import java.util.EnumSet;
 
 /**
- * PRD §4.4.4 — 屠边：狼全灭好人赢；四神全灭或四民全灭狼赢（白痴翻牌仍算神坑存活）。
+ * PRD §4.4.4 — 屠边：狼全灭好人赢；四神全灭或四民全灭狼赢（愚者翻牌仍算神坑存活）。
  */
 public final class WinChecker {
 
