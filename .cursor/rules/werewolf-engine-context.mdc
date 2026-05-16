@@ -1,0 +1,74 @@
+---
+description: werewolf-engine 统一上下文（需求基线、分工、冻结项、实现边界）
+alwaysApply: true
+---
+
+# werewolf-engine 项目上下文
+
+面向本仓库内所有 AI 辅助开发：**以 PRD 为唯一后端需求基线**；实现与协议变更须符合文档冻结约定。
+
+## 权威文档（阅读顺序）
+
+- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.4**，业务规则、功能需求、接口 type/payload、`GamePhase`、里程碑与验收
+- [docs/architecture-design-spec.md](docs/architecture-design-spec.md) — 架构、Agent Team、可观测
+- [docs/tech-selection-feasibility.md](docs/tech-selection-feasibility.md) — 技术选型与可行性
+- [docs/developer-local-setup.md](docs/developer-local-setup.md) — 本地环境（含 `DEEPSEEK_API_KEY` 等）
+
+## 课题与范围
+
+- **课题**：AI 狼人杀 — 多智能体协作与博弈的 Agent Team 实战
+- **板子**：12 人标准 **预女猎白 + 白痴**（固定单板；无警长、无守卫等）
+- **核心**：服务端权威状态机 + 定向信息隔离（`PHASE_SYNC` / `scope`）+ 结构化 `action_log` 可观测
+- **包名**：`com.werewolfengine`
+
+## 技术栈（已冻结项勿随意降级）
+
+- **Java 21**、**Spring Boot 4.0.x**（与根 `pom.xml` 一致）
+- **WebSocket**：Spring 原生 `WebSocketHandler`（MVP 不用 STOMP）
+- **DB / 缓存**：MySQL 8、Redis 7
+- **AI**：LangChain4j + **DeepSeek 官方 API**（OpenAI 兼容）；Week1 以 **Mock AI** 跑通整局为关键路径
+- **并发**：虚拟线程等见 PRD §0.5；**禁止**忙等空转推进阶段
+
+## 三人分工（认领边界）
+
+| 角色 | 模块侧重 | PRD 章节 |
+|------|-----------|----------|
+| **A** | `game` + `ai`：状态机、夜晚/白天结算、胜负、`MockAIPlayer` / LLM | 3、4.3、4.4、4.5、8 |
+| **B** | `gateway` + `room`：WS、HTTP 建房、房间与持久化、推送 | 4.2、4.6、4.7、6.1、6.2 |
+| **C** | `bot/`：测试 Bot、压测 | 2、6.3、8.2、11.3 |
+
+### 包依赖规则（PRD §7.2）
+
+- `gateway` → `room`, `game`, `message`
+- `game` → `ai`, `message`（`ai` 仅被 `game` 调用）
+- `room` → `message`（不依赖 `game` 实现细节）
+- `ai` → `message`（不依赖 `gateway`）
+
+## 冻结范围（未经团队同意不得改）
+
+- WebSocket / HTTP 消息的 `type` 与 `payload` 字段
+- `GamePhase` 枚举全集
+- 第 3 章规则表与技能结算顺序（含 **R17/R17a** 等版本约定，以 PRD 为准）
+- `PHASE_SYNC` 字段约定（含 v1.0.3 起 `wolfChatInPhase` 等）
+- AI 输出 JSON Schema（PRD §4.5）
+
+## 当前实现边界（避免假设过度）
+
+代码以仓库为准；下列用于对齐「PRD 目标」与「骨架现状」：
+
+- `GameStateMachine` 等：**Week1 骨架**方向 — 例如从 `WAITING` 经发牌到 `NIGHT_WOLF`，处理 **KILL / WOLF_CHAT** 等与狼夜相关的路径；**不等于**完整 MVP 全部阶段已落地
+- PRD 期望的 **`NightResolver` / `DayResolver` / `WinChecker`** 等：按 [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) 与包结构 §7.1 **逐步实现**，勿与骨架范围混淆
+- **客户端只提交意图**：死亡与技能结果一律服务端计算；非法操作返回 **ERROR**，不污染权威状态
+
+## 里程碑速查（详细见 PRD §8）
+
+- **Week1 Day4**：Bot WS、JOIN、`PHASE_SYNC`、`GAME_ACTION` / `ACTION_ACK`、同房不串房
+- **Week1 Day5-6**：**完整 Mock 一局** + 定向推送 + 压测多局
+- **Week1 Day7**：协议与规则相关冻结会签字项（PRD §8.4）
+- **Week2**：LangChain4j + DeepSeek、全角色 AI、混合房间与压测
+
+## 与 AI 协作时的约定
+
+- 改规则或消息契约前：**先对照 PRD 是否仍冻结**，需要则走变更与版本升级流程
+- 提交信息：遵循仓库已有 [Conventional Commits](.cursor/rules/conventional-commits.mdc)
+- 术语：`roomId`、`playerId`（1～12）、`userId`、`phase`、`action`、`scope`、`action_log` 等定义见 PRD §0.4

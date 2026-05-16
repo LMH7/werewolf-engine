@@ -6,6 +6,8 @@ public final class PlayerState {
     private Role role;
     private boolean alive;
     private boolean ready;
+    private boolean idiotRevealed;
+    private boolean canVote = true;
 
     public PlayerState(int playerId) {
         this.playerId = playerId;
@@ -39,5 +41,21 @@ public final class PlayerState {
 
     public void setReady(boolean ready) {
         this.ready = ready;
+    }
+
+    public boolean isIdiotRevealed() {
+        return idiotRevealed;
+    }
+
+    public void setIdiotRevealed(boolean idiotRevealed) {
+        this.idiotRevealed = idiotRevealed;
+    }
+
+    public boolean isCanVote() {
+        return canVote;
+    }
+
+    public void setCanVote(boolean canVote) {
+        this.canVote = canVote;
     }
 }

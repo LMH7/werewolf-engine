@@ -1,8 +1,8 @@
-# 狼人杀后端系统需求文档（MVP v1.0.4）
+# 狼人杀后端系统需求文档（MVP v1.0.5）
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | v1.0.4（**LLM** 改 DeepSeek 官方 API；**R17/R17a** 等规则/协议 **v1.0.0 仍冻结**） |
+| 版本 | v1.0.5（在 v1.0.4 基础上增补 **§4.3.7** 阶段位 / 死亡 / AI 可见不可动；**R17/R17a** 与 WS 消息 type/payload **v1.0.0 仍冻结**） |
 | 日期 | 2026-05-16 |
 | 范围 | 后端核心系统；**观战 UI 为课题加分项**，规格见 §1.5 |
 | 项目名 | werewolf-engine |
@@ -437,9 +437,9 @@ GAME_OVER
 | `WAITING` | 房主 start | — | 全员 | — | — |
 | `ROLE_ASSIGN` | 系统 | — | 全员（仅己角色私密字段） | 5 | 随机分配 4狼4民1白痴1预1女1猎 |
 | `NIGHT_WOLF` | 存活狼人 | `KILL`, `WOLF_CHAT` | 狼人频道 + 各狼 `canAct` | 30 | 无有效票型时随机刀**存活非狼**；自刀战术须狼队主动投票（见 R17、R10） |
-| `NIGHT_WITCH` | 女巫 | `SAVE`, `POISON`, `SKIP` | 仅女巫 | 30 | `SKIP` |
-| `NIGHT_SEER` | 预言家 | `CHECK` | 仅预言家 | 20 | 随机未查存活 |
-| `HUNTER_SHOOT` | 死亡猎人 | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP` |
+| `NIGHT_WITCH` | **存活且角色为女巫的座位**可操作（见 §4.3.7：阶段枚举**仍进入面试**，主角已死时无人可点技能） | `SAVE`, `POISON`, `SKIP` | 仅女巫（存活可操作时）；**全员仍收本阶段 `PHASE_SYNC` 的合法字段**（`canAct` 对死者/非女巫为 `false`） | 30 | **阶段位不跳过**：倒计时须走完；若本夜**无可操作女巫**，由系统在阶段末执行等价 `SKIP`（与超时兜底一致，不得因「无人」而压缩或省略该 `GamePhase`） |
+| `NIGHT_SEER` | **存活且角色为预言家的座位**可操作 | `CHECK` | 仅预言家（存活可操作时）；**全员仍收本阶段合法 `PHASE_SYNC`** | 20 | **阶段位不跳过**：倒计时须走完；若**无可操作预言家**，由系统在阶段末执行等价「本夜无查验」/随机查验（与既有 Fallback 表一致，见 §4.5.4），**不得**因无人而省略 `NIGHT_SEER` 枚举阶段 |
+| `HUNTER_SHOOT` | **须开枪的猎人座位**（规则触发，见 R7～R9；与「每夜必经位」不同） | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP` |
 | `DAY_ANNOUNCE` | 系统 | — | 存活全员 | 5 | 自动进入讨论 |
 | `DAY_DISCUSS` | 当前发言者 | `SPEAK`, `SKIP_SPEAK` | 存活全员（**含已翻牌白痴**） | 60/人 | 跳过发言；`PHASE_SYNC` 须含 `speakAnchorSeat`、`speakDirection`、`currentSpeakerId`（见 R13） |
 | `DAY_VOTE` | `can_vote=true` 的存活玩家 | `VOTE`, `SKIP_VOTE` | 存活全员 | 30 | 弃票 |
@@ -474,10 +474,22 @@ GAME_OVER
 
 1. `room.status == PLAYING`
 2. `payload.phase` 与服务器当前 `phase` 一致（**已冻结**：**以服务端 `phase` 为准**；客户端传入 `phase` 仅作校验辅助，不一致则 `INVALID_PHASE`）
-3. 发送者 `playerId` 存活且角色有权执行该 `action`
+3. 发送者 `playerId` 须为本 `action` 的合法主体：**默认**已死亡座位**不得**发起 `GAME_ACTION`（服务端拒绝，`INVALID_ACTION` 或等价错误码）。**例外**：`HUNTER_SHOOT` 等规则明确允许的**死后行动子阶段**（R7～R9），该子阶段内仅猎人座位可 `SHOOT`/`SKIP`（见 §4.3.7）。**存活**且角色与阶段匹配仍由 SM 校验。
 4. `target` 在合法集合内（例：`NIGHT_WOLF` + `KILL` 时，`target` 须为**存活玩家**；已死亡则 `INVALID_TARGET`）
 5. **R17a**：`NIGHT_WOLF` + `KILL` 且 `target` 为**存活狼人**时，须 `wolfChatInPhase==true`，否则 `WOLF_CHAT_REQUIRED`
 6. 执行并返回 `ACTION_ACK`；必要时触发 `PHASE_SYNC` / `GAME_EVENT`；合法狼队聊天置 `wolfChatInPhase=true`
+
+#### 4.3.7 阶段位保留、死亡座位与 AI（可见不可动）
+
+> **目的**：与「课题可观测 + 多 Agent」一致——死亡或本阶段无权的座位**仍可接收**局况更新，但**不能**再通过 `GAME_ACTION` 改状态；**夜晚顺序位**（`NIGHT_WITCH`、`NIGHT_SEER`）在流程上**不得被引擎省略**，须保留与 PRD 表一致的**阶段时长**（倒计时），无存活可操作者时由**系统在阶段末**执行与「超时兜底」等价的默认行为（等价玩家 `SKIP` / Fallback），而非在协议语义上「跳过」该 `GamePhase`。
+
+| 项 | 要求 |
+|----|------|
+| **阶段枚举** | 每一夜仍按 §4.3.2 进入 `NIGHT_WITCH` → `NIGHT_SEER`（再进入结算与白天）。**不因**女巫/预言家已死亡而合并或省略上述阶段名；实现上 B 仍应按阶段推送 `PHASE_SYNC`（可配合 `countdown` 跑满）。 |
+| **死亡座位** | `is_alive=false` 的座位：`PHASE_SYNC` 中 `canAct=false`；**仍接收**与本座位可见性一致的广播/定向消息（含阶段切换、死讯、公开票型等），便于 Agent **持续建模**与日志对齐。**禁止**死亡座位发起非规则允许的 `GAME_ACTION`。 |
+| **AI 座位** | 与真人同规则：存活时可由 `AIService`/Mock 生成意图 → SM；**死亡后**与上条相同——**可收不可动**（不调用 LLM 产出 `GAME_ACTION`，或调用结果仅记日志且 SM **一律拒绝**）。 |
+| **`HUNTER_SHOOT`** | **仅**在 R7～R9 触发时出现，**不属于**「每夜固定顺序位」；无开枪义务时**不**进入该阶段。 |
+| **与 §1.2 对齐** | 表列「存活玩家均能收到 `PHASE_SYNC`」仍指**对局信息权**；**死亡座位**对**允许其知晓**的字段仍须收到同步（否则 AI/真人复盘链断裂）。具体定向规则仍以 §4.6 / `PHASE_SYNC` 字段为准。 |
 
 ### 4.4 角色技能结算模块（A）
 
@@ -610,6 +622,7 @@ GAME_OVER
 | **对抗与协作** | 狼人：`WOLF_CHAT` 商议 + `KILL` 投票（R11、R10、R17，含自刀战术队友指刀）；好人：独立推理；**阵营胜负不由 Agent 协商，由 SM 裁决** |
 | **行动出口唯一** | Agent 输出 JSON 意图 → SM `handleAction` 校验 → 状态变更；禁止 Agent 直写 DB/WS |
 | **可观测** | `thinking` 写入 `action_log` 或调试日志，**禁止**经 `CHAT_BROADCAST` / `PHASE_SYNC` 泄露给其他玩家 |
+| **死后仍观测** | 死亡座位（含 AI）仍接收 §4.3.7 允许的 `PHASE_SYNC`/公开事件；**不得**再提交技能类 `GAME_ACTION`（`HUNTER_SHOOT` 等规则例外除外） |
 
 ```mermaid
 flowchart LR

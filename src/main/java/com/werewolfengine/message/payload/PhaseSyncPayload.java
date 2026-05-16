@@ -2,6 +2,7 @@ package com.werewolfengine.message.payload;
 
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.Role;
+import com.werewolfengine.game.model.SpeakDirection;
 
 import java.util.List;
 
@@ -16,6 +17,14 @@ public record PhaseSyncPayload(
         Boolean canAct,
         Boolean canVote,
         Boolean idiotRevealed,
-        Boolean wolfChatInPhase
+        Boolean wolfChatInPhase,
+        Integer witchAntidoteLeft,
+        Integer witchPoisonLeft,
+        Integer wolfKillTarget,
+        SpeakDirection speakDirection,
+        Integer speakAnchorSeat,
+        Integer currentSpeakerId,
+        String seerCheckAlignment,
+        Integer seerCheckTarget
 ) {
 }

@@ -3,7 +3,6 @@ package com.werewolfengine.game;
 import com.werewolfengine.ai.MockAIPlayer;
 import com.werewolfengine.ai.PlayerIntent;
 import com.werewolfengine.game.model.GameActionCommand;
-import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.message.payload.ActionAckPayload;
@@ -49,23 +48,30 @@ public class GameEngineService {
     }
 
     /**
-     * Run Mock AI for every alive wolf that has not voted yet.
+     * Runs Mock AI until every alive wolf has a KILL vote or phase leaves {@link GamePhase#NIGHT_WOLF}.
      */
     public List<ActionResult> runMockWolfActions(String roomId) {
-        GameRoomState room = stateMachine.getRoom(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Room not found: " + roomId));
-        if (room.getPhase() != GamePhase.NIGHT_WOLF) {
-            throw new IllegalStateException("Mock wolf actions only in NIGHT_WOLF");
-        }
-
         List<ActionResult> results = new ArrayList<>();
-        for (int wolfId : room.aliveWolfIds()) {
-            if (room.getWolfKillVotes().containsKey(wolfId)) {
-                continue;
+        for (int safety = 0; safety < 16; safety++) {
+            GameRoomState room = stateMachine.getRoom(roomId)
+                    .orElseThrow(() -> new IllegalArgumentException("Room not found: " + roomId));
+            if (room.getPhase() != GamePhase.NIGHT_WOLF) {
+                return results;
             }
-            mockAIPlayer.decide(room, wolfId).ifPresent(intent -> {
+            int wolfToAct = -1;
+            for (int wolfId : room.aliveWolfIds()) {
+                if (!room.getWolfKillVotes().containsKey(wolfId)) {
+                    wolfToAct = wolfId;
+                    break;
+                }
+            }
+            if (wolfToAct < 0) {
+                return results;
+            }
+            final int wid = wolfToAct;
+            mockAIPlayer.decide(room, wid).ifPresent(intent -> {
                 GameActionCommand cmd = new GameActionCommand(
-                        wolfId,
+                        wid,
                         intent.action(),
                         intent.target(),
                         GamePhase.NIGHT_WOLF
