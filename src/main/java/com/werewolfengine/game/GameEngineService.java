@@ -48,7 +48,8 @@ public class GameEngineService {
     }
 
     /**
-     * Advances {@link GamePhase#DAY_ANNOUNCE} (timer / gateway); not a player GAME_ACTION.
+     * Advances {@link GamePhase#NIGHT_DEATH_ANNOUNCE} or {@link GamePhase#EXILE_DEATH_ANNOUNCE}
+     * (timer / gateway); not a player GAME_ACTION.
      */
     public ActionResult advanceDayAnnounce(String roomId) {
         GameStateMachine.HandleActionResult result = stateMachine.advanceDayAnnounce(roomId);

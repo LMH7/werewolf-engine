@@ -54,15 +54,15 @@ public final class GameRoomState {
     private Integer hunterShooterSeat;
 
     /**
-     * Hunter eligible after {@link GamePhase#DAY_ANNOUNCE} (night wolf-kill rule or vote exile);
-     * consumed when leaving announce. Never set {@link #hunterShooterSeat} before announce.
+     * Hunter eligible after announce (R7/R9); consumed when leaving announce.
+     * Never set {@link #hunterShooterSeat} before announce.
      */
     private Integer pendingHunterAfterAnnounce;
 
-    private DayAnnounceSource dayAnnounceSource;
-
-    /** Set when entering {@link GamePhase#HUNTER_SHOOT}; cleared when that phase ends. */
-    private HunterShootContext hunterShootContext;
+    /**
+     * When entering {@link GamePhase#HUNTER_SHOOT}, true if from {@link GamePhase#EXILE_DEATH_ANNOUNCE}.
+     */
+    private boolean hunterShootAfterExile;
 
     private GameWinner winner;
 
@@ -118,8 +118,7 @@ public final class GameRoomState {
         dayVotes.clear();
         hunterShooterSeat = null;
         pendingHunterAfterAnnounce = null;
-        dayAnnounceSource = null;
-        hunterShootContext = null;
+        hunterShootAfterExile = false;
         winner = null;
         witchActedThisNight = false;
         seerActedThisNight = false;
@@ -329,20 +328,12 @@ public final class GameRoomState {
         this.pendingHunterAfterAnnounce = pendingHunterAfterAnnounce;
     }
 
-    public DayAnnounceSource getDayAnnounceSource() {
-        return dayAnnounceSource;
+    public boolean isHunterShootAfterExile() {
+        return hunterShootAfterExile;
     }
 
-    public void setDayAnnounceSource(DayAnnounceSource dayAnnounceSource) {
-        this.dayAnnounceSource = dayAnnounceSource;
-    }
-
-    public HunterShootContext getHunterShootContext() {
-        return hunterShootContext;
-    }
-
-    public void setHunterShootContext(HunterShootContext hunterShootContext) {
-        this.hunterShootContext = hunterShootContext;
+    public void setHunterShootAfterExile(boolean hunterShootAfterExile) {
+        this.hunterShootAfterExile = hunterShootAfterExile;
     }
 
     public GameWinner getWinner() {
@@ -403,8 +394,7 @@ public final class GameRoomState {
         witchActedThisNight = false;
         seerActedThisNight = false;
         pendingHunterAfterAnnounce = null;
-        dayAnnounceSource = null;
-        hunterShootContext = null;
+        hunterShootAfterExile = false;
     }
 
     /** After night settlement — clear witch/seer night flags (death already applied). */

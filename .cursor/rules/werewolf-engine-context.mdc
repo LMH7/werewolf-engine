@@ -9,7 +9,9 @@ alwaysApply: true
 
 ## 权威文档（阅读顺序）
 
-- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.7**，业务规则、功能需求、接口 type/payload、`GamePhase`（夜序预→女；猎人仅 `DAY_ANNOUNCE` 后）、**§4.3.7**、里程碑与验收
+- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.11**，规则与 **§4.3.8 引擎窄版**（DeathBus、夜内三 Handler、HunterShootFlow）；对外 `GamePhase` 不变；**R23** §3.2.1
+- [docs/adr/002-death-bus-and-hunter-flow.md](docs/adr/002-death-bus-and-hunter-flow.md) — 同步死亡总线 + 猎人流程
+- [docs/adr/001-night-skill-pipeline.md](docs/adr/001-night-skill-pipeline.md) — 夜内 `NightSkillPipeline`（狼/预/女）
 - [docs/architecture-design-spec.md](docs/architecture-design-spec.md) — 架构、Agent Team、可观测
 - [docs/tech-selection-feasibility.md](docs/tech-selection-feasibility.md) — 技术选型与可行性
 - [docs/developer-local-setup.md](docs/developer-local-setup.md) — 本地环境（含 `DEEPSEEK_API_KEY` 等）

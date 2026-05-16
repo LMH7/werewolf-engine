@@ -5,6 +5,8 @@ import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
+import com.werewolfengine.game.model.GameWinner;
+import com.werewolfengine.game.model.PlayerState;
 import com.werewolfengine.game.model.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,7 +118,7 @@ class GameStateMachineTest {
         } else if (witchAlive(room)) {
             assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_WITCH);
         } else {
-            assertThat(room.getPhase()).isIn(GamePhase.DAY_ANNOUNCE, GamePhase.GAME_OVER);
+            assertThat(room.getPhase()).isIn(GamePhase.NIGHT_DEATH_ANNOUNCE, GamePhase.GAME_OVER);
         }
     }
 
@@ -175,7 +177,7 @@ class GameStateMachineTest {
         completeNightToAnnounce(roomId, room);
 
         room = sm.getRoom(roomId).orElseThrow();
-        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_ANNOUNCE);
+        assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_DEATH_ANNOUNCE);
         assertThat(room.getPlayer(villager).isAlive()).isFalse();
 
         sm.advanceDayAnnounce(roomId);
@@ -203,7 +205,7 @@ class GameStateMachineTest {
         completeNightToAnnounce(roomId, room);
 
         room = sm.getRoom(roomId).orElseThrow();
-        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_ANNOUNCE);
+        assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_DEATH_ANNOUNCE);
         assertThat(room.getPendingHunterAfterAnnounce()).isEqualTo(hunter);
         assertThat(room.getHunterShooterSeat()).isNull();
 
@@ -211,5 +213,120 @@ class GameStateMachineTest {
         room = sm.getRoom(roomId).orElseThrow();
         assertThat(room.getPhase()).isEqualTo(GamePhase.HUNTER_SHOOT);
         assertThat(room.getHunterShooterSeat()).isEqualTo(hunter);
+    }
+
+    @Test
+    void hunterExiled_goesToExileDeathAnnounce() {
+        String roomId = "r_hunter_exile";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int hunter = seatOf(room, Role.HUNTER);
+
+        room.setPhase(GamePhase.DAY_VOTE);
+        for (int id : room.alivePlayerIds()) {
+            PlayerState p = room.getPlayer(id);
+            if (p.isCanVote()) {
+                sm.handleAction(roomId,
+                        new GameActionCommand(id, GameActionType.VOTE, hunter, GamePhase.DAY_VOTE));
+            }
+        }
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.EXILE_DEATH_ANNOUNCE);
+        assertThat(room.getPendingHunterAfterAnnounce()).isEqualTo(hunter);
+        assertThat(room.getPlayer(hunter).isAlive()).isTrue();
+    }
+
+    @Test
+    void lastGodHunterExiled_wolvesWinWithoutHunterShoot() {
+        String roomId = "r_last_god_vote";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int hunter = seatOf(room, Role.HUNTER);
+        killAllGodsExcept(room, hunter);
+
+        room.setPhase(GamePhase.DAY_VOTE);
+        for (int id : room.alivePlayerIds()) {
+            PlayerState p = room.getPlayer(id);
+            if (p.isCanVote()) {
+                sm.handleAction(roomId,
+                        new GameActionCommand(id, GameActionType.VOTE, hunter, GamePhase.DAY_VOTE));
+            }
+        }
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.GAME_OVER);
+        assertThat(room.getWinner()).isEqualTo(GameWinner.WEREWOLVES);
+        assertThat(room.getHunterShooterSeat()).isNull();
+    }
+
+    @Test
+    void lastGodHunterKilledAtNight_wolvesWinNoHunterPhase() {
+        String roomId = "r_last_god_night";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int hunter = seatOf(room, Role.HUNTER);
+        killAllGodsExcept(room, hunter);
+
+        allWolvesKill(sm, roomId, room, hunter);
+        completeNightToAnnounce(roomId, sm.getRoom(roomId).orElseThrow());
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.GAME_OVER);
+        assertThat(room.getWinner()).isEqualTo(GameWinner.WEREWOLVES);
+        assertThat(room.getPendingHunterAfterAnnounce()).isNull();
+    }
+
+    @Test
+    void lastVillagerKilledAtNight_wolvesWin() {
+        String roomId = "r_last_villager";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        final GameRoomState r0 = room;
+        final int lastVillager = r0.alivePlayerIds().stream()
+                .filter(id -> r0.getPlayer(id).getRole() == Role.VILLAGER)
+                .findFirst()
+                .orElseThrow();
+        for (PlayerState p : room.getPlayers().values()) {
+            if (p.getRole() == Role.VILLAGER && p.getPlayerId() != lastVillager) {
+                p.setAlive(false);
+            } else if (p.getRole() != null && p.getRole() != Role.VILLAGER && p.getRole() != Role.WEREWOLF) {
+                p.setAlive(false);
+            }
+        }
+
+        allWolvesKill(sm, roomId, room, lastVillager);
+        completeNightToAnnounce(roomId, sm.getRoom(roomId).orElseThrow());
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.GAME_OVER);
+        assertThat(room.getWinner()).isEqualTo(GameWinner.WEREWOLVES);
+    }
+
+    private static int seatOf(GameRoomState room, Role role) {
+        return room.getPlayers().values().stream()
+                .filter(p -> p.getRole() == role)
+                .map(PlayerState::getPlayerId)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static void killAllGodsExcept(GameRoomState room, int keepSeat) {
+        for (PlayerState p : room.getPlayers().values()) {
+            if (p.getRole() == Role.SEER || p.getRole() == Role.WITCH || p.getRole() == Role.IDIOT) {
+                p.setAlive(false);
+            }
+            if (p.getRole() == Role.HUNTER && p.getPlayerId() != keepSeat) {
+                p.setAlive(false);
+            }
+        }
     }
 }

@@ -16,12 +16,12 @@ import java.util.stream.Collectors;
  * PRD R10 — majority vote among wolves; tie → last chronologically submitted vote among tied
  * targets; still tied → random alive non-wolf. No votes → random alive non-wolf.
  */
-final class WolfVoteResolver {
+public final class WolfVoteResolver {
 
     private WolfVoteResolver() {
     }
 
-    static int resolveKillTarget(GameRoomState room) {
+    public static int resolveKillTarget(GameRoomState room) {
         List<Integer> wolves = room.aliveWolfIds();
         if (wolves.isEmpty()) {
             return randomNonWolf(room);

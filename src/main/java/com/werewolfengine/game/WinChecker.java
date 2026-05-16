@@ -52,4 +52,18 @@ public final class WinChecker {
         }
         return null;
     }
+
+    /** 存活神职仅 {@code seat} 一人（屠边「最后一神」判定，含愚者翻牌仍存活）。 */
+    public static boolean isOnlyLivingGod(GameRoomState room, int seat) {
+        int godsAlive = 0;
+        int onlySeat = -1;
+        for (PlayerState p : room.getPlayers().values()) {
+            if (!p.isAlive() || p.getRole() == null || !GOD_ROLES.contains(p.getRole())) {
+                continue;
+            }
+            godsAlive++;
+            onlySeat = p.getPlayerId();
+        }
+        return godsAlive == 1 && onlySeat == seat;
+    }
 }

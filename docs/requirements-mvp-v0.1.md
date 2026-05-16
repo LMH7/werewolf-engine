@@ -1,8 +1,8 @@
-# 狼人杀后端系统需求文档（MVP v1.0.7）
+# 狼人杀后端系统需求文档（MVP v1.0.11）
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | v1.0.7（**夜序**：`NIGHT_SEER` → `NIGHT_WITCH` 后结算；**猎人**：仅 `DAY_ANNOUNCE` 之后可 `HUNTER_SHOOT`（夜晚死讯、投票放逐猎人）；**R17/R17a** 与 WS 消息 type/payload **v1.0.0 仍冻结**） |
+| 版本 | v1.0.11（在 v1.0.10 基础上：**引擎窄版重构**需求 §4.3.8；[ADR-002](adr/002-death-bus-and-hunter-flow.md) 死亡总线与猎人流程；[ADR-001](adr/001-night-skill-pipeline.md) 夜内管道；**不改变** §4.3.1 `GamePhase`、R1～R23 与 WS type/payload **v1.0.0 冻结项**） |
 | 日期 | 2026-05-16 |
 | 范围 | 后端核心系统；**观战 UI 为课题加分项**，规格见 §1.5 |
 | 项目名 | werewolf-engine |
@@ -244,7 +244,7 @@
 | R6 | 解药 / 毒药数量 | 各 **1** 瓶，全程 | 已冻结 |
 | R7 | 猎人被狼刀死 | **可开枪** | 已冻结 |
 | R8 | 猎人被毒死 | **不能开枪** | 已冻结 |
-| R9 | 猎人被投票放逐 | **可开枪**；先 `VOTE_RESULT` 公布放逐，再 `DAY_ANNOUNCE`，再 `HUNTER_SHOOT`（超时默认 `SKIP`） | 已冻结 |
+| R9 | 猎人被投票放逐 | **可开枪**（**例外**见 R23）：先 `VOTE_RESULT`，再 `EXILE_DEATH_ANNOUNCE`，再 `HUNTER_SHOOT`（超时默认 `SKIP`） | 已冻结 |
 | R10 | 狼人刀口不一致 | 30s 内收集各狼 `KILL`；**多数票**；平票取**最后提交**；仍平则**随机**存活非狼目标 | 已冻结 |
 | R11 | 狼人私聊 | 仅 `NIGHT_WOLF` 阶段，scope=`WEREWOLF` | 已冻结 |
 | R12 | 预言家查验结果 | 仅告知 **好人 / 狼人**（不暴露具体神职） | 已冻结 |
@@ -259,6 +259,19 @@
 | R20 | 愚者被狼刀 / 女巫毒 | **正常死亡**，`is_alive=false`；猎人毒杀同 R8 | 已冻结 |
 | R21 | 屠边计数 | **平民**：仅 `role=VILLAGER`，共 4 人，**4 人全灭**（`is_alive=false`）则狼赢。**神职**：`SEER`,`WITCH`,`HUNTER`,`IDIOT` 共 4 人；**4 神全灭**则狼赢。愚者翻牌后仍 `is_alive=true` 时**仍占神坑**；愚者死亡（刀/毒）则神坑减员 | 已冻结 |
 | R22 | 愚者翻牌后投票 | `DAY_VOTE` 阶段若 `can_vote=false`，拒绝 `VOTE`，返回 `INVALID_ACTION` | 已冻结 |
+| R23 | 屠边即时判胜 | 在 **§3.4 第 4 步夜晚死亡结算后**、**离开 `NIGHT_DEATH_ANNOUNCE` / `EXILE_DEATH_ANNOUNCE` 前**、**`VOTE_RESULT` 放逐结算后**、**`HUNTER_SHOOT` 结束后**，均须执行屠边判定（R1/R21）。若已满足狼赢/好人赢，**立即** `GAME_OVER`，**不得**再进入无意义的 `HUNTER_SHOOT` / `DAY_DISCUSS` / 下一夜。**特例**：若被放逐的猎人是**场上唯一存活神职**（另 3 神已 `is_alive=false`），视为神职全灭，**不**进入 `EXILE_DEATH_ANNOUNCE` / `HUNTER_SHOOT`，直接狼赢 | 已冻结 |
+
+#### 3.2.1 R23 实现注意（胜负优先于子阶段）
+
+> **原则**：任何时刻只要屠边条件（R1/R21）已满足，**立即** `GAME_OVER`；不得再进入猎人开枪、白天讨论、公布死讯或下一夜。
+
+| 顺序 | 说明 |
+|------|------|
+| **错误（禁止）** | 夜晚死亡结算 → 直接进入 `HUNTER_SHOOT` → 猎人开枪 → 再 `CHECK_WIN` → 发现神职全灭 → 狼赢。会导致**最后一神猎人昨夜死亡后仍能开枪**等违反 R23 的行为。 |
+| **正确** | 夜晚死亡结算 → **先**屠边判定（R23）→ 已胜则 `GAME_OVER`；**未胜**且 R7/R9 成立 → 先经 `NIGHT_DEATH_ANNOUNCE` / `EXILE_DEATH_ANNOUNCE` → 离开公布前**再** R23 → 再 `HUNTER_SHOOT`。 |
+| **典型边界** | 最后一神猎人**昨夜**被刀：夜末结算后神职存活数已为 0 → **不进** `NIGHT_DEATH_ANNOUNCE` / `HUNTER_SHOOT`。最后一神猎人**被票放逐**：`VOTE_RESULT` 结算时即判神职全灭 → **不进** `EXILE_DEATH_ANNOUNCE` / `HUNTER_SHOOT`。 |
+
+当前 `GameStateMachine` 在夜末、`advanceDayAnnounce` 入口、放逐猎人分支、`afterHunterResolved` 等处调用 `tryEndGame`（等价于 R23 检测点）；详见 §4.3.2 读者简图与 §4.3.7。
 
 ### 3.3 角色技能摘要
 
@@ -268,7 +281,7 @@
 | 女巫 | 解药 | `NIGHT_WITCH` | 救当晚刀口；已用则不可再救 |
 | 女巫 | 毒药 | `NIGHT_WITCH` | 毒任意存活玩家；与解药同夜不可并用（R4） |
 | 预言家 | 查验 | `NIGHT_SEER` | 每晚必查 1 人，结果仅预言家可见 |
-| 猎人 | 开枪 | **`HUNTER_SHOOT`** | 见 R7～R9；**仅**在 `DAY_ANNOUNCE` 之后进入，见 §3.4、§4.3.2 |
+| 猎人 | 开枪 | **`HUNTER_SHOOT`** | 见 R7～R9；**仅**在 `NIGHT_DEATH_ANNOUNCE` 或 `EXILE_DEATH_ANNOUNCE` 之后进入，见 §3.4、§4.3.2 |
 | 愚者 | 翻牌免疫放逐 | `DAY_VOTE` / `VOTE_RESULT` | 见 R19～R22；夜晚无主动技能；屠边计 **神职** |
 | 平民 | — | 白天发言、投票 | — |
 
@@ -279,9 +292,11 @@
 2. 预言家查验（NIGHT_SEER 结束，仅记录）
 3. 女巫决策：救 / 毒 / 跳过（NIGHT_WITCH 结束）
 4. **夜晚死亡结算**：应用狼刀（考虑解药）、毒药，产生/更新死亡名单
-5. `DAY_ANNOUNCE` 公布死讯：**已冻结**——全场仅公布**死亡名单**，不向好人侧区分死因类型（刀/毒/放逐等）；复盘在 `GAME_OVER` 中披露
-6. **猎人开枪（条件触发）**：若步骤 4～5 涉及 R7（狼刀猎人且未同夜毒杀）或 R9（投票放逐猎人），在**公布死讯之后**进入 `HUNTER_SHOOT`（超时默认不开枪）；否则跳过
-7. 首夜：`HUNTER_SHOOT` 结束或无需开枪 → `DAY_DISCUSS`；白天放逐线：`HUNTER_SHOOT` 结束 → `CHECK_WIN`
+5. **屠边判定（R23）**：若四神全灭或四民全灭或狼全灭 → **`GAME_OVER`**，本夜流程终止
+6. `NIGHT_DEATH_ANNOUNCE` 公布昨夜死讯（仅当步骤 5 未结束对局）：全场仅公布**死亡名单**，不向好人侧区分死因类型；复盘在 `GAME_OVER` 中披露
+7. **离开 `NIGHT_DEATH_ANNOUNCE` 时再次屠边判定（R23）**
+8. **猎人开枪（条件触发，R7）**：若昨夜死亡含合格猎人且 R23 未已判胜，在步骤 6～7 之后进入 `HUNTER_SHOOT`（超时 `SKIP`）；否则跳过 → `DAY_DISCUSS`
+9. 白天放逐线：`VOTE_RESULT` 后若 R9 成立 → `EXILE_DEATH_ANNOUNCE` → 离开前 R23 → 可选 `HUNTER_SHOOT` → `CHECK_WIN`
 ```
 
 ---
@@ -380,6 +395,8 @@ Gateway <-------------------------------------+
 
 ### 4.3 游戏状态机模块（A）
 
+> **引擎窄版重构（v1.0.11）**：对外仍按 §4.3.1 `GamePhase` 与 §4.3.2.2 协议图；对内拆为夜内管道、同步死亡总线、猎人流程协调器，见 **§4.3.8**、[ADR-001](adr/001-night-skill-pipeline.md)、[ADR-002](adr/002-death-bus-and-hunter-flow.md)。
+
 #### 4.3.1 GamePhase 枚举
 
 ```text
@@ -389,8 +406,9 @@ NIGHT_START
 NIGHT_WOLF
 NIGHT_SEER
 NIGHT_WITCH
-HUNTER_SHOOT          // 独立 GamePhase：仅于 DAY_ANNOUNCE 之后（R7、R9），见 §4.3.2；**不**列入 NIGHT_* 顺序链
-DAY_ANNOUNCE
+HUNTER_SHOOT          // 独立 GamePhase：仅于死讯公布后（R7、R9），见 §4.3.2；**不**列入 NIGHT_* 顺序链
+NIGHT_DEATH_ANNOUNCE  // 天亮公布昨夜死讯（R7）
+EXILE_DEATH_ANNOUNCE  // 放逐后公布出局（R9）
 DAY_DISCUSS
 DAY_VOTE
 VOTE_RESULT
@@ -400,41 +418,106 @@ GAME_OVER
 
 #### 4.3.2 状态流转
 
-> **`HUNTER_SHOOT` 语义（v1.0.7）**：**仅**在 `DAY_ANNOUNCE` 之后进入（夜晚死讯公布、或投票放逐猎人后公布）。**不是** `NIGHT_WOLF → NIGHT_SEER → NIGHT_WITCH` 夜内顺序上的下一环。`NIGHT_WITCH` 结束后执行 §3.4 第 4 步死亡结算，再进入 `DAY_ANNOUNCE`。
+> **v1.0.9 要点**：死讯公布拆为 **`NIGHT_DEATH_ANNOUNCE`**（天亮，R7）与 **`EXILE_DEATH_ANNOUNCE`**（放逐，R9）。`HUNTER_SHOOT` **仅**在二者之一经 `advanceDayAnnounce` 离开后（且 R23 未已判胜）。夜内顺序为 `NIGHT_WOLF` → `NIGHT_SEER` → `NIGHT_WITCH` → 死亡结算。**屠边即时判胜（R23）** 见 §3.2.1；实现上可在检测点直接 `GAME_OVER`（不必单独暴露 `CHECK_WIN` 给客户端）。
 
-```text
-WAITING
-  --[12人全员ready + start]--> ROLE_ASSIGN
-ROLE_ASSIGN
-  --[角色分配完成]--> NIGHT_START
-NIGHT_START
-  --[广播夜晚开始]--> NIGHT_WOLF
-NIGHT_WOLF
-  --[狼人阶段结束]--> NIGHT_SEER
-NIGHT_SEER
-  --[预言家阶段结束]--> NIGHT_WITCH
-NIGHT_WITCH
-  --[女巫阶段结束；执行 §3.4 夜晚死亡结算]--> DAY_ANNOUNCE
-DAY_ANNOUNCE
-  --[满足猎人开枪条件 R7]--> HUNTER_SHOOT
-  --[不满足]--> DAY_DISCUSS
-HUNTER_SHOOT
-  --[开枪或超时 SKIP]--> DAY_DISCUSS
-DAY_DISCUSS
-  --[讨论结束]--> DAY_VOTE
-DAY_VOTE
-  --[投票结束]--> VOTE_RESULT
-VOTE_RESULT
-  --[猎人被放逐 R9]--> DAY_ANNOUNCE --> HUNTER_SHOOT --> CHECK_WIN
-  --[其他]--> CHECK_WIN
-CHECK_WIN
-  --[有胜负]--> GAME_OVER
-  --[无胜负]--> NIGHT_START
-GAME_OVER
-  --[可选重置]--> WAITING
+##### 4.3.2.1 读者简图（R23 检测点，非 GamePhase 枚举）
+
+下列图中 **`WinNight`、`WinAnnounce`、`WinHunter`、`WinExile` 为文档伪节点**，表示调用 `WinChecker` / `tryEndGame` 的屠边判定点，**不是** `GamePhase` 枚举值，**不会**出现在 `PHASE_SYNC.currentPhase` 中。完整协议阶段见 §4.3.1 与 §4.3.2.2。
+
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    NIGHT_WITCH --> WinNight: 夜末死亡结算
+    WinNight --> GAME_OVER: R23屠边满足
+    WinNight --> NIGHT_DEATH_ANNOUNCE: 对局继续
+
+    NIGHT_DEATH_ANNOUNCE --> WinAnnounce: advanceDayAnnounce
+    WinAnnounce --> GAME_OVER: R23
+    WinAnnounce --> HUNTER_SHOOT: R7待开枪猎人
+    WinAnnounce --> DAY_DISCUSS: 无猎人
+
+    HUNTER_SHOOT --> WinHunter: 开枪或SKIP
+    WinHunter --> GAME_OVER: R23
+    WinHunter --> DAY_DISCUSS: 天亮猎人线
+    WinHunter --> CHECK_WIN: 放逐猎人线
+
+    DAY_DISCUSS --> DAY_VOTE: 讨论结束
+    DAY_VOTE --> VOTE_RESULT: 投票结束
+
+    VOTE_RESULT --> GAME_OVER: 最后一神猎人R23
+    VOTE_RESULT --> EXILE_DEATH_ANNOUNCE: R9
+    VOTE_RESULT --> CHECK_WIN: 其他
+
+    EXILE_DEATH_ANNOUNCE --> WinExile: advanceDayAnnounce
+    WinExile --> GAME_OVER: R23
+    WinExile --> HUNTER_SHOOT: R9
+    WinExile --> CHECK_WIN: 无猎人
+
+    CHECK_WIN --> GAME_OVER: 有胜负
+    CHECK_WIN --> NIGHT_START: 无胜负入夜
 ```
 
-> **白天线补充**：猎人被投票放逐（R9）时，**不**在 `VOTE_RESULT` 内直接进入 `HUNTER_SHOOT`；须先 `DAY_ANNOUNCE` 再猎人阶段，开枪结算后再 `CHECK_WIN`（屠边计入开枪所致死亡）。
+> 读者简图省略 `WAITING` / `ROLE_ASSIGN` / `NIGHT_WOLF` / `NIGHT_SEER` 等入夜前细节；**禁止**将 `VOTE_RESULT` 直连 `HUNTER_SHOOT`（须先 `EXILE_DEATH_ANNOUNCE`，见 R9）。
+
+##### 4.3.2.2 协议完整图（GamePhase 一一对应）
+
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    [*] --> WAITING
+    WAITING --> ROLE_ASSIGN: 12人ready + start
+    ROLE_ASSIGN --> NIGHT_START: 发牌完成
+    NIGHT_START --> NIGHT_WOLF: 广播入夜
+
+    NIGHT_WOLF --> NIGHT_SEER: 狼阶段结束(R10)
+    NIGHT_SEER --> NIGHT_WITCH: 查验结束/空过
+    NIGHT_WITCH --> CHECK_WIN_STAR: 女巫结束→夜晚死亡结算
+    CHECK_WIN_STAR --> GAME_OVER: 屠边满足(R23)
+    CHECK_WIN_STAR --> NIGHT_DEATH_ANNOUNCE: 对局继续
+
+    NIGHT_DEATH_ANNOUNCE --> CHECK_WIN_STAR2: advanceDayAnnounce
+    CHECK_WIN_STAR2 --> GAME_OVER: 屠边满足(R23)
+    CHECK_WIN_STAR2 --> HUNTER_SHOOT: 待开枪猎人(R7)
+    CHECK_WIN_STAR2 --> DAY_DISCUSS: 无猎人
+
+    HUNTER_SHOOT --> CHECK_WIN_STAR3: 开枪或SKIP
+    CHECK_WIN_STAR3 --> GAME_OVER: 屠边满足
+    CHECK_WIN_STAR3 --> DAY_DISCUSS: 天亮猎人线
+    CHECK_WIN_STAR3 --> CHECK_WIN: 放逐猎人线
+
+    DAY_DISCUSS --> DAY_VOTE: 讨论结束
+    DAY_VOTE --> VOTE_RESULT: 投票结束
+
+    VOTE_RESULT --> EXILE_DEATH_ANNOUNCE: 猎人被放逐(R9)且非最后一神
+    VOTE_RESULT --> GAME_OVER: 最后一神猎人被放逐(R23)
+    VOTE_RESULT --> CHECK_WIN: 愚者翻牌/他人出局/平票
+
+    EXILE_DEATH_ANNOUNCE --> CHECK_WIN_STAR4: advanceDayAnnounce
+    CHECK_WIN_STAR4 --> GAME_OVER: 屠边满足(R23)
+    CHECK_WIN_STAR4 --> HUNTER_SHOOT: 待开枪猎人(R9)
+    CHECK_WIN_STAR4 --> CHECK_WIN: 无猎人
+
+    CHECK_WIN --> GAME_OVER: 有胜负
+    CHECK_WIN --> NIGHT_START: 无胜负
+    NIGHT_START --> NIGHT_WOLF: 新一轮
+
+    GAME_OVER --> WAITING: 可选重置
+    GAME_OVER --> [*]
+```
+
+> 图中 `CHECK_WIN*` 表示 **R23 屠边检测点**（与 `CHECK_WIN` 阶段逻辑等价）；当前 `GameStateMachine` 在这些节点调用 `WinChecker.evaluate`，满足则 **直接** `GAME_OVER`。放逐猎人线在 `HUNTER_SHOOT` 结束后由 `hunterShootAfterExile` 进入 `CHECK_WIN`，天亮猎人线进入 `DAY_DISCUSS`。
+
+| 检测点 | 触发时机 | 典型结果 |
+|--------|----------|----------|
+| 夜末 | `NIGHT_WITCH` 后应用 §3.4 第 4 步 | 最后一神/最后一民昨夜死亡 → 狼赢，**不进** `NIGHT_DEATH_ANNOUNCE` |
+| 天亮公布前 | `advanceDayAnnounce` 且 phase=`NIGHT_DEATH_ANNOUNCE` | 状态已满足屠边 → 狼赢/好人赢 |
+| 放逐公布前 | `advanceDayAnnounce` 且 phase=`EXILE_DEATH_ANNOUNCE` | 状态已满足屠边 → 狼赢/好人赢 |
+| 放逐后 | `VOTE_RESULT` 结算 | 最后一神猎人被票 → **不进** `EXILE_DEATH_ANNOUNCE` / `HUNTER_SHOOT`，直接狼赢 |
+| 常规 | `CHECK_WIN` / 猎人阶段结束 | 开枪后死亡纳入屠边再判 |
+
+**白天线（R9）**：猎人被投票放逐且**非**「场上唯一存活神职」时，`VOTE_RESULT` → `EXILE_DEATH_ANNOUNCE` → `HUNTER_SHOOT` → `CHECK_WIN`。
 
 #### 4.3.3 各状态明细
 
@@ -445,8 +528,9 @@ GAME_OVER
 | `NIGHT_WOLF` | 存活狼人 | `KILL`, `WOLF_CHAT` | 狼人频道 + 各狼 `canAct` | 30 | 无有效票型时随机刀**存活非狼**；自刀战术须狼队主动投票（见 R17、R10） |
 | `NIGHT_WITCH` | **存活且角色为女巫的座位**可操作（见 §4.3.7：阶段枚举**仍进入面试**，主角已死时无人可点技能） | `SAVE`, `POISON`, `SKIP` | 仅女巫（存活可操作时）；**全员仍收本阶段 `PHASE_SYNC` 的合法字段**（`canAct` 对死者/非女巫为 `false`） | 30 | **阶段位不跳过**：倒计时须走完；若本夜**无可操作女巫**，由系统在阶段末执行等价 `SKIP`（与超时兜底一致，不得因「无人」而压缩或省略该 `GamePhase`） |
 | `NIGHT_SEER` | **存活且角色为预言家的座位**可操作 | `CHECK` | 仅预言家（存活可操作时）；**全员仍收本阶段合法 `PHASE_SYNC`** | 20 | **阶段位不跳过**：倒计时须走完；若**无可操作预言家**，由系统在阶段末执行等价「本夜无查验」/随机查验（与既有 Fallback 表一致，见 §4.5.4），**不得**因无人而省略 `NIGHT_SEER` 枚举阶段 |
-| `HUNTER_SHOOT` | **须开枪的猎人座位**（R7、R9；**仅** `DAY_ANNOUNCE` 之后，见 §4.3.2） | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP`（默认不开枪） |
-| `DAY_ANNOUNCE` | 系统（B 定时或 `advanceDayAnnounce`） | — | 存活全员 | 5 | 自动进入 `HUNTER_SHOOT` 或 `DAY_DISCUSS` / `CHECK_WIN` |
+| `HUNTER_SHOOT` | **须开枪的猎人座位**（R7、R9；**仅**死讯公布后，见 §4.3.2） | `SHOOT`, `SKIP` | 仅猎人 | 20 | `SKIP`（默认不开枪） |
+| `NIGHT_DEATH_ANNOUNCE` | 系统（B 定时或 `advanceDayAnnounce`） | — | 存活全员 | 5 | 先 R23 判胜；否则 `HUNTER_SHOOT`（R7）或 `DAY_DISCUSS` |
+| `EXILE_DEATH_ANNOUNCE` | 系统（B 定时或 `advanceDayAnnounce`） | — | 存活全员 | 5 | 先 R23 判胜；否则 `HUNTER_SHOOT`（R9）或 `CHECK_WIN` |
 | `DAY_DISCUSS` | 当前发言者 | `SPEAK`, `SKIP_SPEAK` | 存活全员（**含已翻牌愚者**） | 60/人 | 跳过发言；`PHASE_SYNC` 须含 `speakAnchorSeat`、`speakDirection`、`currentSpeakerId`（见 R13） |
 | `DAY_VOTE` | `can_vote=true` 的存活玩家 | `VOTE`, `SKIP_VOTE` | 存活全员 | 30 | 弃票 |
 | `VOTE_RESULT` | 系统 | — | 全员 | 5 | 自动 |
@@ -491,17 +575,98 @@ GAME_OVER
 
 | 项 | 要求 |
 |----|------|
-| **阶段枚举** | 每一夜仍按 §4.3.2 进入 `NIGHT_SEER` → `NIGHT_WITCH`（再死亡结算、`DAY_ANNOUNCE`）。**不因**女巫/预言家已死亡而合并或省略上述阶段名；实现上 B 仍应按阶段推送 `PHASE_SYNC`（可配合 `countdown` 跑满）。 |
+| **阶段枚举** | 每一夜仍按 §4.3.2 进入 `NIGHT_SEER` → `NIGHT_WITCH`（再死亡结算、`NIGHT_DEATH_ANNOUNCE`）。**不因**女巫/预言家已死亡而合并或省略上述阶段名；实现上 B 仍应按阶段推送 `PHASE_SYNC`（可配合 `countdown` 跑满）。 |
 | **死亡座位** | `is_alive=false` 的座位：`PHASE_SYNC` 中 `canAct=false`；**仍接收**与本座位可见性一致的广播/定向消息（含阶段切换、死讯、公开票型等），便于 Agent **持续建模**与日志对齐。**禁止**死亡座位发起非规则允许的 `GAME_ACTION`。 |
 | **AI 座位** | 与真人同规则：存活时可由 `AIService`/Mock 生成意图 → SM；**死亡后**与上条相同——**可收不可动**（不调用 LLM 产出 `GAME_ACTION`，或调用结果仅记日志且 SM **一律拒绝**）。 |
-| **`HUNTER_SHOOT`** | **仅**在 `DAY_ANNOUNCE` 之后、且 R7 或 R9 成立时出现；**不属于** `NIGHT_WOLF→NIGHT_SEER→NIGHT_WITCH` 夜内顺位；无开枪义务时**不**进入该阶段。 |
+| **`HUNTER_SHOOT`** | **仅**在 `NIGHT_DEATH_ANNOUNCE` 或 `EXILE_DEATH_ANNOUNCE` 经 `advanceDayAnnounce` 离开后、且 R7 或 R9 成立且 **R23 未已判胜** 时出现；**不属于**夜内顺位。最后一神猎人被放逐时 **R23 优先**，**不**进入本阶段。 |
+| **屠边（R23）** | 夜末结算后、离开两类死讯公布前、放逐结算后、猎人阶段后均须判定；已胜则 `GAME_OVER`，禁止进入无意义后续阶段。 |
+| **R23 顺序（反模式）** | **禁止**「先 `HUNTER_SHOOT` 再判胜」：见 §3.2.1。**禁止** `VOTE_RESULT` 跳过 `EXILE_DEATH_ANNOUNCE` 直连 `HUNTER_SHOOT`。 |
 | **与 §1.2 对齐** | 表列「存活玩家均能收到 `PHASE_SYNC`」仍指**对局信息权**；**死亡座位**对**允许其知晓**的字段仍须收到同步（否则 AI/真人复盘链断裂）。具体定向规则仍以 §4.6 / `PHASE_SYNC` 字段为准。 |
 
 > **实现阶段说明（非放宽产品语义）**：在**房间级定时器 / 网关**未接入前，`GameStateMachine` 可先在单事务内完成与「阶段末空过」**等价**的状态迁移，便于 Week1 联调；**对外协议与 B 侧推送**仍应按 `currentPhase` 与 `countdown` **分阶段**向各连接发 `PHASE_SYNC`，不得合并为「无女巫阶段」等省略语义的对外表述。
 
+#### 4.3.8 引擎内部结构（窄版重构，**不改变**对外协议）
+
+> **范围**：实现层解耦与可测试性；**不**合并 `GamePhase` 为宏观 `NIGHT`/`DAY`；**不**变更 §4.6 消息 type/payload。读者简图（§4.3.2.1）仍为产品叙事；本节为 **A 模块（`game` 包）** 实现契约。
+
+##### 4.3.8.1 目标与非目标
+
+| 目标 | 非目标（本窄版不做） |
+|------|----------------------|
+| 降低 `GameStateMachine` 与角色/死亡规则的耦合 | 守卫/骑士技能与延迟伤害队列 |
+| 统一「真实死亡」入口，R23 与猎人 pending 收口 | 异步/MQ 死亡总线 |
+| 夜内狼/预/女可插拔顺序（预女猎愚板固定） | 愚者 `IDIOT` 独立 Handler（仍走投票分支 R19） |
+| 为 P1 `GameView` / `GameTools` 预留与 handler 共用校验 | 修改 PRD 规则表 R1～R23 |
+
+##### 4.3.8.2 组件划分
+
+```text
+GameStateMachine          # 编排：phase 推进、handleAction 路由、PHASE_SYNC、房间锁
+├── NightSkillPipeline    # 夜内：Wolf → Seer → Witch（见 ADR-001）
+│     └── RoleSkillHandler × 3
+├── NightResolver         # 夜末批量结算（狼刀/救/毒）→ 产出 DeathRecord 列表
+├── DeathBus              # 同步应用死亡 + 订阅者（见 ADR-002）
+│     ├── WinCheckSubscriber      # R23 → GAME_OVER
+│     └── HunterPendingSubscriber # R7/R8：pendingHunterAfterAnnounce
+├── HunterShootFlow       # 公布后开枪、放逐猎人、HUNTER_SHOOT、afterResolved 路由
+├── ExileResolver         # 投票出局（含愚者翻牌、最后一神猎人 R23）
+└── WinChecker            # 屠边判定（不变）
+```
+
+**愚者**：无 `IdiotHandler`；`ExileResolver` / `advanceAfterVote` 内处理 R19～R22。
+
+**平民**：无夜间 handler；白天投票由 SM + `ExileResolver` 处理。
+
+##### 4.3.8.3 死亡总线（窄版）
+
+| 项 | 要求 |
+|----|------|
+| **入口** | `DeathBus.apply(room, List<DeathRecord>)`：同一房间、**同步**、在房间锁内调用 |
+| **DeathRecord** | 至少 `seat`（int）、`cause`（枚举，见下） |
+| **cause 枚举（MVP）** | `WOLF_KILL`、`POISON`、`VOTE_EXILE`、`HUNTER_SHOOT`；同一夜狼刀致死且非毒杀同座时用于 R7 |
+| **应用顺序** | ① 将所有 `seat` 置 `is_alive=false`（已死者跳过）② 按注册顺序调用订阅者 |
+| **订阅者** | **WinCheckSubscriber**：`WinChecker.evaluate`；若已胜则 `GAME_OVER` 并清理猎人待办。**HunterPendingSubscriber**：按 R7/R8 更新 `pendingHunterAfterAnnounce`（**不**进入 `HUNTER_SHOOT`） |
+| **调用点（MVP）** | 夜末：`NightResolver` 结算后一次 `apply`；投票致死：非愚者、非「仅待公布猎人」路径；猎人 `SHOOT` 命中；猎人 `SKIP` 导致猎人自身死亡（与现实现一致） |
+| **不走总线** | 愚者翻牌（`is_alive` 仍为 true）；仅设置 `pendingHunterAfterAnnounce` 而尚未死亡；`GAME_EVENT` 广播 |
+
+**R23**：每次 `DeathBus.apply` 结束后，WinCheckSubscriber 必须执行；若已 `GAME_OVER`，不得再进入 `NIGHT_DEATH_ANNOUNCE` / `HUNTER_SHOOT` / `DAY_DISCUSS`（与 §3.2.1 一致）。
+
+##### 4.3.8.4 夜内技能管道（窄版）
+
+| 项 | 要求 |
+|----|------|
+| **Handler 列表** | 固定顺序：`WolfNightHandler` → `SeerNightHandler` → `WitchNightHandler` |
+| **Phase 映射** | 各 handler 仅处理 `NIGHT_WOLF` / `NIGHT_SEER` / `NIGHT_WITCH`；阶段名与 §4.3.3 超时表不变 |
+| **阶段结束** | 女巫阶段结束后：调用现有 `NightResolver` → `DeathBus.apply` → SM 根据胜负进入 `GAME_OVER` 或 `NIGHT_DEATH_ANNOUNCE` |
+| **空过** | 预言家/女巫已死亡或无人可操作：阶段位仍保留；阶段末系统等价 `SKIP`（§4.3.7） |
+| **狼人** | R10、R17、R17a 逻辑保留在 `WolfNightHandler` 或委托现有校验 |
+
+##### 4.3.8.5 猎人流程协调器（窄版）
+
+| 项 | 要求 |
+|----|------|
+| **职责** | 集中 R7/R9 与 `hunterShootAfterExile`：待开枪标记、进入/离开 `HUNTER_SHOOT`、`afterHunterResolved` 去 `DAY_DISCUSS` 或 `CHECK_WIN` |
+| **非职责** | 不替代 `DeathBus` 应用致死；不替代 `WinChecker` 屠边公式 |
+| **天亮线** | `advanceDayAnnounce` 且 `phase=NIGHT_DEATH_ANNOUNCE`：先 R23（`tryEndGame`），再清 pending → `HUNTER_SHOOT` 或 `DAY_DISCUSS` |
+| **放逐线** | `VOTE_RESULT` 后：最后一神猎人 → 直接 R23，**不进** `EXILE_DEATH_ANNOUNCE`；否则 `EXILE_DEATH_ANNOUNCE` → `advanceDayAnnounce` → 可选 `HUNTER_SHOOT` |
+| **开枪** | `HUNTER_SHOOT` 仅 `SHOOT`/`SKIP`；结束后再次 R23，再按 `hunterShootAfterExile` 分支 |
+
+##### 4.3.8.6 迁移与验收
+
+| 里程碑 | 交付 | 验收 |
+|--------|------|------|
+| M1 | `HunterShootFlow` + SM 委托 | 现有 `GameStateMachineTest` 猎人/R23 用例全绿 |
+| M2 | `DeathBus` + 上述调用点迁入 | 夜末/投票/猎人开枪后 R23 行为与 v1.0.10 一致 |
+| M3 | `NightSkillPipeline` + 三夜 handler | 夜序、R10、R17a、空过与 v1.0.10 一致 |
+| M4（可选） | `GameView` / `legalActions` 与 handler 共用 | AI Mock 可覆盖预/女 |
+
+**回归**：`mvnw.cmd test`；`PHASE_SYNC.currentPhase` 序列与 §4.3.2.2 一致。
+
 ### 4.4 角色技能结算模块（A）
 
 #### 4.4.1 NightResolver 输入（逻辑结构）
+
+> **v1.0.11**：夜末结算输出转为 `List<DeathRecord>` 后由 `DeathBus.apply` 统一应用（§4.3.8.3）；`NightResolver` 不再直接承担 R23 与 `pendingHunterAfterAnnounce` 的最终写入（改由订阅者）。
 
 ```json
 {
@@ -1073,8 +1238,11 @@ com.werewolfengine
 ├── game/             # A
 │   ├── GameStateMachine.java
 │   ├── NightResolver.java
-│   ├── DayResolver.java
 │   ├── WinChecker.java
+│   ├── night/              # NightSkillPipeline, Wolf/Seer/Witch handlers（§4.3.8.4）
+│   ├── death/              # DeathBus, DeathRecord, subscribers（§4.3.8.3）
+│   ├── hunter/             # HunterShootFlow（§4.3.8.5）
+│   ├── exile/              # ExileResolver（投票/愚者/放逐猎人入口，可选与 SM 合并）
 │   └── model/
 ├── ai/               # A
 │   ├── AIService.java
@@ -1195,12 +1363,14 @@ com.werewolfengine
          |   是 |              | 否                  |
          |      v              v                     |
          |  +--------+    +-------------+             |
-         |  |HUNTER_ |    |DAY_ANNOUNCE |             |
-         |  |SHOOT   |    +-------------+             |
-         |  +---+----+                                |
-         |      v                                     |
+         |  |HUNTER_ |    |NIGHT_DEATH_ |             |
+         |  |SHOOT   |    |ANNOUNCE     |             |
+         |  +---+----+    +-------------+             |
+         |      v              |                      |
+         |  (天亮公布死讯)     v                      |
          |  +-------------+                           |
-         |  |DAY_ANNOUNCE |                           |
+         |  |NIGHT_DEATH_ |                           |
+         |  |ANNOUNCE     |                           |
          |          +------+------+                   |
          |                 v                          |
          |          +-------------+                   |
@@ -1254,6 +1424,10 @@ com.werewolfengine
 | v1.0.5 | 2026-05-16 | **阶段位与死亡/AI**：新增 §4.3.7（`NIGHT_WITCH`/`NIGHT_SEER` 不省略、倒计时跑满、死后可见不可动）；修订 §4.3.3 表、§4.3.5 第 3 条、§4.5.8、§2.1.4 行为表。**不改变** v1.0.0 已冻结的胜负规则与消息 type 全集 |
 | v1.0.6 | 2026-05-16 | **`HUNTER_SHOOT` 语义**：明确为**死亡结算触发**，非 `NIGHT_*` 夜内线性下一环；修订 §3.4、§4.3.1～4.3.2、§4.3.3/§4.3.7、附录 A；**不改变** R7～R9 与 `GamePhase` 枚举名 |
 | v1.0.7 | 2026-05-16 | **夜序** `NIGHT_SEER`→`NIGHT_WITCH`；**猎人**仅 `DAY_ANNOUNCE` 后开枪（R7/R9）；实现 `advanceDayAnnounce`、§3.4/§4.3.2 与代码对齐 |
+| v1.0.8 | 2026-05-16 | **R23 屠边即时判胜**：夜末/公布前/最后一神猎人放逐跳过开枪；§3.4、§4.3.2 状态图、§4.3.7；与 `WinChecker`/`tryEndGame` 实现对齐 |
+| v1.0.9 | 2026-05-16 | **死讯阶段拆分**：`NIGHT_DEATH_ANNOUNCE` + `EXILE_DEATH_ANNOUNCE` 取代 `DAY_ANNOUNCE`；`advanceDayAnnounce` 按 phase 路由；§3.4、§4.3.1～4.3.3、§4.3.7、附录 A；与 `GameStateMachine`/`hunterShootAfterExile` 对齐 |
+| v1.0.10 | 2026-05-16 | **状态机文档**：§3.2.1 R23 胜负优先与反模式；§4.3.2.1 读者简图（`Win*` 伪节点）+ §4.3.2.2 协议完整图；§4.3.7 补充；[ADR-001](adr/001-night-skill-pipeline.md) 夜内 handler 管道（P1 提议） |
+| v1.0.11 | 2026-05-16 | **引擎窄版重构需求**：§4.3.8（DeathBus、夜内三 Handler、HunterShootFlow、迁移 M1～M4）；§7.1 包结构；[ADR-002](adr/002-death-bus-and-hunter-flow.md)；ADR-001 与窄版对齐。**不改变**对外 `GamePhase`/规则冻结 |
 
 ---
 

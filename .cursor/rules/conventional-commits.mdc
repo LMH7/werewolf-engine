@@ -1,0 +1,28 @@
+---
+description: Git commit messages must follow Conventional Commits
+alwaysApply: true
+---
+
+# Conventional Commits
+
+When proposing or writing a Git commit message (including one-line summaries), use [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Format
+
+- First line: `type(scope): subject` or `type: subject`
+- Use a **lowercase** type from this set when it fits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `style`, `ci`, `build`
+- **Subject**: imperative mood, no trailing period, keep the first line roughly **≤ 72** characters when practical
+- **Body** (optional): blank line after the subject; wrap at ~72 chars; explain motivation and breaking changes, not implementation noise
+
+## Examples
+
+- `feat: add room creation API`
+- `fix: reject night actions outside the active phase`
+- `docs: align MVP spec with discussion gate rules`
+- `refactor: extract phase sync payload builder`
+- `chore: bump Spring Boot and Redis starter versions`
+
+## Do not
+
+- Do not use vague titles like "update", "changes", or "fix stuff" without a type
+- Do not paste an entire paragraph into the subject line; move detail to the body

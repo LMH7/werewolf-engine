@@ -2,9 +2,9 @@
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | v1.3 |
-| 日期 | 2026-05-15 |
-| 状态 | 与 [PRD v1.0.5](requirements-mvp-v0.1.md) 及 [技术选型 v0.1.5](tech-selection-feasibility.md) **对齐** |
+| 版本 | v1.4 |
+| 日期 | 2026-05-16 |
+| 状态 | 与 [PRD v1.0.11](requirements-mvp-v0.1.md)（§4.3.8 引擎窄版）及 [技术选型 v0.1.5](tech-selection-feasibility.md) **对齐** |
 | 适用范围 | MVP 后端（12 人局、单实例、无消息队列） |
 | 课题 | **AI 狼人杀 — Agent Team 实战**（多智能体协作/对抗 + 对局引擎 + 可观测） |
 
@@ -28,7 +28,9 @@
 
 | 文档 | 关系 |
 |------|------|
-| [requirements-mvp-v0.1.md](requirements-mvp-v0.1.md) | **需求与协议真源**；本文不重复规则条文，只映射到架构组件 |
+| [requirements-mvp-v0.1.md](requirements-mvp-v0.1.md) | **需求与协议真源**；§4.3.8 引擎窄版实现契约 |
+| [adr/001-night-skill-pipeline.md](adr/001-night-skill-pipeline.md) | 夜内 `NightSkillPipeline` + Wolf/Seer/Witch handlers |
+| [adr/002-death-bus-and-hunter-flow.md](adr/002-death-bus-and-hunter-flow.md) | 同步 `DeathBus` + `HunterShootFlow` |
 | [tech-selection-feasibility.md](tech-selection-feasibility.md) | **技术栈与可行性**；本文落实为组件与部署视图 |
 
 ---
@@ -136,7 +138,11 @@ MVP 下 **所有容器合一**：一个 Spring Boot 进程内嵌 HTTP + WebSocke
 | WebSocket Gateway | `gateway` | `WebSocketHandler`、连接表、`MessageRouter`、按 `roomId`/`playerId` 推送 |
 | Connection Manager | `gateway` | Session 生命周期、心跳、与 Redis 映射 |
 | Room Service | `room` | 房间 CRUD、座位、准备、开始；**触发**开局，不驱动阶段循环 |
-| Game State Machine | `game` | `GamePhase`、超时、`NightResolver`/`DayResolver`/`WinChecker` |
+| Game State Machine | `game` | 编排、`GamePhase`、房间锁；委托 night/death/hunter 子模块 |
+| Night skill pipeline | `game.night` | `NightSkillPipeline`、`RoleSkillHandler`（狼/预/女） |
+| Death bus | `game.death` | `DeathBus`、`DeathRecord`、R23/猎人 pending 订阅者 |
+| Hunter shoot flow | `game.hunter` | 公布后 `HUNTER_SHOOT` 与放逐线（R7/R9） |
+| Night / win resolution | `game` | `NightResolver`、`WinChecker`；`ExileResolver`（投票/愚者） |
 | AI Service | `ai` | LangChain4j、Prompt、Tools、Mock；被 SM 按座位调用 |
 | Message DTOs | `message` | PRD 定义之 `type` / `payload` 序列化结构 |
 
@@ -146,12 +152,18 @@ flowchart LR
   Router[MessageRouter]
   RoomSvc[RoomService]
   SM[GameStateMachine]
+  Pipe[NightSkillPipeline]
+  Bus[DeathBus]
+  Hunt[HunterShootFlow]
   AI[AIService]
   DTO[message_DTOs]
 
   WSHandler --> Router
   Router --> RoomSvc
   Router --> SM
+  SM --> Pipe
+  SM --> Bus
+  SM --> Hunt
   SM --> AI
   Router --> DTO
   SM --> DTO
@@ -248,6 +260,37 @@ sequenceDiagram
 
 ## 8. 游戏状态机与并发
 
+### 8.0 引擎窄版内部分层（PRD §4.3.8）
+
+对外 **唯一** 阶段真源仍为 `GamePhase`（`PHASE_SYNC.currentPhase`）。对内：
+
+```mermaid
+flowchart TB
+  SM[GameStateMachine]
+  Pipe[NightSkillPipeline]
+  NR[NightResolver]
+  Bus[DeathBus]
+  HF[HunterShootFlow]
+  WC[WinChecker]
+
+  SM --> Pipe
+  Pipe --> NR
+  NR --> Bus
+  Bus --> WC
+  Bus --> HF
+  SM --> HF
+  SM --> Bus
+```
+
+| 模块 | 依赖方向 | 说明 |
+|------|----------|------|
+| `game.night.*` | → `game.model`，← SM | 不直接改 WS |
+| `game.death.*` | → `WinChecker`，← `NightResolver` / 放逐/猎人 | 同步订阅链 |
+| `game.hunter.*` | → `game.death`（可选）、`WinChecker`，← SM | 不进夜内 pipeline |
+| `GameStateMachine` | 聚合上述；**禁止** gateway 直调 handler | 保持单写者 |
+
+迁移顺序（与 PRD M1～M3）：`HunterShootFlow` → `DeathBus` → `NightSkillPipeline`。
+
 ### 8.1 单写者与串行队列
 
 - **规则**：同一 `roomId` 所有 mutating 事件进入 **单线程执行器** 或 **可重入锁**（二选一实现，对外行为一致）。
@@ -293,7 +336,7 @@ flowchart TB
 ```
 
 - **信息隔离**：`GameView` 构造器按当前 `phase` 与 `playerId` 裁剪字段，与 Gateway 定向推送规则同源。
-- **协作/对抗**：狼人刀口在 `NIGHT_WOLF` 阶段内收集；胜负仅 `WinChecker` 输出。
+- **协作/对抗**：狼人刀口在 `NIGHT_WOLF` 阶段内收集；胜负经 `DeathBus` 订阅者调用 `WinChecker`（及公布前 `tryEndGame`）输出。
 - **商议门闩（R17a）**：SM 维护 `wolfChatInPhase`；`KILL` 指向存活狼人前须本阶段已有 `WOLF_CHAT` / `scope=WEREWOLF` 消息，否则 `WOLF_CHAT_REQUIRED`（见 PRD §4.3.6）。
 
 ---

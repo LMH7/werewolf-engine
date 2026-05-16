@@ -1,8 +1,11 @@
 package com.werewolfengine.game;
 
+import com.werewolfengine.game.death.DeathBus;
+import com.werewolfengine.game.death.DeathCause;
+import com.werewolfengine.game.death.DeathRecord;
+import com.werewolfengine.game.death.DeathApplyResult;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.model.PlayerState;
-import com.werewolfengine.game.model.Role;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -10,19 +13,17 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * PRD §3.4 — apply wolf kill (respect save), poison; record hunter eligibility after announce (R7).
+ * PRD §3.4 — wolf kill (respect save), poison; deaths via {@link DeathBus}.
  */
-final class NightResolver {
+public final class NightResolver {
 
     private NightResolver() {
     }
 
     /**
-     * Mutates room: deaths, bottles, clears night intents.
-     * Sets {@link GameRoomState#setPendingHunterAfterAnnounce} when a hunter may shoot after
-     * {@link com.werewolfengine.game.model.GamePhase#DAY_ANNOUNCE} (wolf kill only, not same-night poison on same seat).
+     * @return true if R23 ended the game
      */
-    static void applyNightDeaths(GameRoomState room) {
+    public static boolean applyNightDeaths(GameRoomState room, DeathBus deathBus) {
         Integer wolfTarget = room.getPendingWolfKillTarget();
         boolean saveUsed = Boolean.TRUE.equals(room.getWitchUsedSaveTonight());
         Integer poisonTarget = room.getWitchPoisonTargetTonight();
@@ -37,9 +38,6 @@ final class NightResolver {
             consumedAntidote = true;
         }
 
-        boolean hunterMayShootFromWolf = wolfStrike
-                && room.getPlayer(wolfTarget).getRole() == Role.HUNTER;
-
         Set<Integer> toKill = new LinkedHashSet<>();
         if (wolfStrike) {
             toKill.add(wolfTarget);
@@ -53,13 +51,6 @@ final class NightResolver {
             }
         }
 
-        for (int id : toKill) {
-            PlayerState p = room.getPlayer(id);
-            if (p != null && p.isAlive()) {
-                p.setAlive(false);
-            }
-        }
-
         if (consumedAntidote) {
             room.setWitchAntidoteRemaining(false);
         }
@@ -67,28 +58,20 @@ final class NightResolver {
             room.setWitchPoisonRemaining(false);
         }
 
-        List<Integer> deaths = new ArrayList<>();
-        for (int id : toKill) {
-            PlayerState p = room.getPlayer(id);
-            if (p != null && !p.isAlive()) {
-                deaths.add(id);
-            }
+        List<DeathRecord> records = new ArrayList<>();
+        if (wolfStrike) {
+            records.add(new DeathRecord(wolfTarget, DeathCause.WOLF_KILL));
         }
+        if (poisonApplied) {
+            records.add(new DeathRecord(poisonTarget, DeathCause.POISON));
+        }
+
+        List<Integer> deaths = new ArrayList<>(toKill);
         deaths.sort(Integer::compareTo);
         room.setLastNightDeaths(deaths);
         room.clearNightIntent();
 
-        room.setHunterShooterSeat(null);
-        Integer pendingHunter = null;
-        if (hunterMayShootFromWolf && wolfTarget != null) {
-            PlayerState h = room.getPlayer(wolfTarget);
-            if (h != null && !h.isAlive()) {
-                boolean alsoPoisoned = poisonTarget != null && poisonTarget.equals(wolfTarget);
-                if (!alsoPoisoned) {
-                    pendingHunter = wolfTarget;
-                }
-            }
-        }
-        room.setPendingHunterAfterAnnounce(pendingHunter);
+        DeathApplyResult result = deathBus.apply(room, records);
+        return result.gameEnded();
     }
 }
