@@ -64,6 +64,16 @@ public final class GameRoomState {
      */
     private boolean hunterShootAfterExile;
 
+    /** Seat whose exile is announced in {@link GamePhase#EXILE_DEATH_ANNOUNCE} (R24). */
+    private Integer exileAnnouncedSeat;
+
+    /** R24 — seats speaking in order during {@link GamePhase#LAST_WORDS}. */
+    private final List<Integer> lastWordsOrder = new ArrayList<>();
+    private int lastWordsIndex;
+
+    /** True when {@link GamePhase#LAST_WORDS} follows {@link GamePhase#EXILE_DEATH_ANNOUNCE}. */
+    private boolean lastWordsAfterExile;
+
     private GameWinner winner;
 
     /** Witch has submitted SKIP / SAVE / POISON for this night. */
@@ -119,6 +129,10 @@ public final class GameRoomState {
         hunterShooterSeat = null;
         pendingHunterAfterAnnounce = null;
         hunterShootAfterExile = false;
+        exileAnnouncedSeat = null;
+        lastWordsOrder.clear();
+        lastWordsIndex = 0;
+        lastWordsAfterExile = false;
         winner = null;
         witchActedThisNight = false;
         seerActedThisNight = false;
@@ -334,6 +348,39 @@ public final class GameRoomState {
 
     public void setHunterShootAfterExile(boolean hunterShootAfterExile) {
         this.hunterShootAfterExile = hunterShootAfterExile;
+    }
+
+    public Integer getExileAnnouncedSeat() {
+        return exileAnnouncedSeat;
+    }
+
+    public void setExileAnnouncedSeat(Integer exileAnnouncedSeat) {
+        this.exileAnnouncedSeat = exileAnnouncedSeat;
+    }
+
+    public List<Integer> getLastWordsOrder() {
+        return lastWordsOrder;
+    }
+
+    public int getLastWordsIndex() {
+        return lastWordsIndex;
+    }
+
+    public void setLastWordsIndex(int lastWordsIndex) {
+        this.lastWordsIndex = lastWordsIndex;
+    }
+
+    public void clearLastWords() {
+        lastWordsOrder.clear();
+        lastWordsIndex = 0;
+    }
+
+    public boolean isLastWordsAfterExile() {
+        return lastWordsAfterExile;
+    }
+
+    public void setLastWordsAfterExile(boolean lastWordsAfterExile) {
+        this.lastWordsAfterExile = lastWordsAfterExile;
     }
 
     public GameWinner getWinner() {

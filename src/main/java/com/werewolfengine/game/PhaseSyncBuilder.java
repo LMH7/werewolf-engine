@@ -1,5 +1,6 @@
 package com.werewolfengine.game;
 
+import com.werewolfengine.game.lastwords.LastWordsFlow;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.model.PlayerState;
@@ -44,6 +45,11 @@ public final class PhaseSyncBuilder {
                 currentSpeaker = room.getDiscussOrder().get(room.getDiscussIndex());
             }
         }
+        if (phase == GamePhase.LAST_WORDS && !room.getLastWordsOrder().isEmpty()) {
+            if (room.getLastWordsIndex() < room.getLastWordsOrder().size()) {
+                currentSpeaker = room.getLastWordsOrder().get(room.getLastWordsIndex());
+            }
+        }
 
         String seerAlign = null;
         Integer seerTarget = null;
@@ -83,6 +89,7 @@ public final class PhaseSyncBuilder {
             case NIGHT_SEER -> 20;
             case ROLE_ASSIGN -> 5;
             case NIGHT_START, NIGHT_DEATH_ANNOUNCE, EXILE_DEATH_ANNOUNCE, VOTE_RESULT -> 5;
+            case LAST_WORDS -> 30;
             case DAY_DISCUSS -> 60;
             case DAY_VOTE -> 30;
             case HUNTER_SHOOT -> 20;
@@ -109,6 +116,9 @@ public final class PhaseSyncBuilder {
                 && room.getHunterShooterSeat() == viewerPlayerId) {
             return true;
         }
+        if (LastWordsFlow.isCurrentSpeaker(room, viewerPlayerId)) {
+            return true;
+        }
         if (!viewer.isAlive()) {
             return false;
         }
@@ -116,7 +126,7 @@ public final class PhaseSyncBuilder {
             case NIGHT_WOLF -> viewer.getRole() == Role.WEREWOLF;
             case NIGHT_WITCH -> viewer.getRole() == Role.WITCH;
             case NIGHT_SEER -> viewer.getRole() == Role.SEER;
-            case HUNTER_SHOOT -> false;
+            case HUNTER_SHOOT, LAST_WORDS -> false;
             case DAY_DISCUSS -> {
                 List<Integer> order = room.getDiscussOrder();
                 int idx = room.getDiscussIndex();

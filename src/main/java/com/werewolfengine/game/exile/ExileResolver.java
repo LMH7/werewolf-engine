@@ -45,7 +45,7 @@ public final class ExileResolver {
                 if (ex.getRole() == Role.IDIOT && !ex.isIdiotRevealed()) {
                     ex.setIdiotRevealed(true);
                     ex.setCanVote(false);
-                    return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
+                    return continueAfterVote.apply(room);
                 }
                 if (ex.getRole() == Role.HUNTER) {
                     if (WinChecker.isOnlyLivingGod(room, exileSeat)) {
@@ -57,6 +57,7 @@ public final class ExileResolver {
                                     GameOutcome.syncsAllAlive(room));
                         }
                     }
+                    room.setExileAnnouncedSeat(exileSeat);
                     room.setPendingHunterAfterAnnounce(exileSeat);
                     room.setPhase(GamePhase.EXILE_DEATH_ANNOUNCE);
                     return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
@@ -65,6 +66,9 @@ public final class ExileResolver {
                 if (result.gameEnded()) {
                     return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
                 }
+                room.setExileAnnouncedSeat(exileSeat);
+                room.setPhase(GamePhase.EXILE_DEATH_ANNOUNCE);
+                return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
             }
         }
 

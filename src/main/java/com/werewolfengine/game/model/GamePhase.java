@@ -11,9 +11,11 @@ public enum GamePhase {
     NIGHT_SEER,
     NIGHT_WITCH,
     HUNTER_SHOOT,
-    /** After night settlement — dawn death list (then optional hunter, then discuss). */
+    /** After night settlement — dawn death list (then optional last words, hunter, discuss). */
     NIGHT_DEATH_ANNOUNCE,
-    /** After vote exile — exile death list (then optional hunter, then check win). */
+    /** R24 — first-night night deaths or exiled seat, before hunter / day. */
+    LAST_WORDS,
+    /** After vote exile — exile death list (then optional last words, hunter, check win). */
     EXILE_DEATH_ANNOUNCE,
     DAY_DISCUSS,
     DAY_VOTE,

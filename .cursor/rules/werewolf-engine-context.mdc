@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 权威文档（阅读顺序）
 
-- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.11**，规则与 **§4.3.8 引擎窄版**（DeathBus、夜内三 Handler、HunterShootFlow）；对外 `GamePhase` 不变；**R23** §3.2.1
+- [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.12**，规则含 **R24 遗言**（`LAST_WORDS`）；**§4.3.8 引擎窄版**（DeathBus、夜内三 Handler、HunterShootFlow）；**R23** §3.2.1
 - [docs/adr/002-death-bus-and-hunter-flow.md](docs/adr/002-death-bus-and-hunter-flow.md) — 同步死亡总线 + 猎人流程
 - [docs/adr/001-night-skill-pipeline.md](docs/adr/001-night-skill-pipeline.md) — 夜内 `NightSkillPipeline`（狼/预/女）
 - [docs/architecture-design-spec.md](docs/architecture-design-spec.md) — 架构、Agent Team、可观测
