@@ -1,8 +1,8 @@
 package com.werewolfengine.game.hunter;
 
-import com.werewolfengine.game.GameOutcome;
-import com.werewolfengine.game.GameStateMachine;
-import com.werewolfengine.game.PhaseSyncBuilder;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.sync.PhaseSyncBuilder;
+import com.werewolfengine.game.win.GameOutcome;
 import com.werewolfengine.game.death.DeathBus;
 import com.werewolfengine.game.lastwords.LastWordsFlow;
 import com.werewolfengine.game.death.DeathCause;

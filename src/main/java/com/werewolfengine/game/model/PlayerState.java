@@ -8,6 +8,8 @@ public final class PlayerState {
     private boolean ready;
     private boolean idiotRevealed;
     private boolean canVote = true;
+    /** {@code null} = server AI seat (PRD §4.2.3); non-null = human player (S1). */
+    private Long humanUserId;
 
     public PlayerState(int playerId) {
         this.playerId = playerId;
@@ -57,5 +59,13 @@ public final class PlayerState {
 
     public void setCanVote(boolean canVote) {
         this.canVote = canVote;
+    }
+
+    public Long getHumanUserId() {
+        return humanUserId;
+    }
+
+    public void setHumanUserId(Long humanUserId) {
+        this.humanUserId = humanUserId;
     }
 }

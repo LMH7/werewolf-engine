@@ -1,7 +1,7 @@
 package com.werewolfengine.game.lastwords;
 
-import com.werewolfengine.game.GameOutcome;
-import com.werewolfengine.game.GameStateMachine;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.win.GameOutcome;
 import com.werewolfengine.game.model.ActionAck;
 import com.werewolfengine.game.model.ActionErrorCode;
 import com.werewolfengine.game.model.GameActionCommand;

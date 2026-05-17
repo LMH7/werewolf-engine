@@ -1,5 +1,6 @@
 package com.werewolfengine.game;
 
+import com.werewolfengine.game.engine.GameStateMachine;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;

@@ -11,6 +11,9 @@ alwaysApply: true
 
 - [docs/requirements-mvp-v0.1.md](docs/requirements-mvp-v0.1.md) — **MVP v1.0.12**，规则含 **R24 遗言**（`LAST_WORDS`）；**§4.3.8 引擎窄版**（DeathBus、夜内三 Handler、HunterShootFlow）；**R23** §3.2.1
 - [docs/adr/002-death-bus-and-hunter-flow.md](docs/adr/002-death-bus-and-hunter-flow.md) — 同步死亡总线 + 猎人流程
+- [docs/adr/003-ai-integration.md](docs/adr/003-ai-integration.md) — **AI 接入**（编排、GameView、LLM 分阶段；已冻结）
+- [docs/ai-modules.md](docs/ai-modules.md) — **AI 子包功能分类**（`ai.api` / `policy` / `parse` 等）
+- [docs/game-modules.md](docs/game-modules.md) — **Game 子包功能分类**（`game.engine` / `orchestration` / `sync` 等）
 - [docs/adr/001-night-skill-pipeline.md](docs/adr/001-night-skill-pipeline.md) — 夜内 `NightSkillPipeline`（狼/预/女）
 - [docs/architecture-design-spec.md](docs/architecture-design-spec.md) — 架构、Agent Team、可观测
 - [docs/tech-selection-feasibility.md](docs/tech-selection-feasibility.md) — 技术选型与可行性
