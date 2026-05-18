@@ -1,11 +1,13 @@
 package com.werewolfengine.game.exile;
 
-import com.werewolfengine.game.GameOutcome;
-import com.werewolfengine.game.GameStateMachine;
-import com.werewolfengine.game.WinChecker;
+import com.werewolfengine.game.win.GameOutcome;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.win.WinChecker;
 import com.werewolfengine.game.death.DeathBus;
 import com.werewolfengine.game.death.DeathCause;
 import com.werewolfengine.game.death.DeathRecord;
+import com.werewolfengine.game.observability.ActionLogService;
+import com.werewolfengine.game.observability.PerceptionLogEvents;
 import com.werewolfengine.game.model.ActionAck;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
@@ -21,13 +23,19 @@ import java.util.function.Function;
 public final class ExileResolver {
 
     private final DeathBus deathBus;
+    private final ActionLogService actionLog;
 
     public ExileResolver() {
-        this(new DeathBus());
+        this(new DeathBus(), null);
     }
 
     public ExileResolver(DeathBus deathBus) {
+        this(deathBus, null);
+    }
+
+    public ExileResolver(DeathBus deathBus, ActionLogService actionLog) {
         this.deathBus = deathBus;
+        this.actionLog = actionLog;
     }
 
     public GameStateMachine.HandleActionResult advanceAfterVote(
@@ -45,6 +53,7 @@ public final class ExileResolver {
                 if (ex.getRole() == Role.IDIOT && !ex.isIdiotRevealed()) {
                     ex.setIdiotRevealed(true);
                     ex.setCanVote(false);
+                    PerceptionLogEvents.idiotRevealed(actionLog, room, exileSeat);
                     return continueAfterVote.apply(room);
                 }
                 if (ex.getRole() == Role.HUNTER) {
@@ -60,6 +69,7 @@ public final class ExileResolver {
                     room.setExileAnnouncedSeat(exileSeat);
                     room.setPendingHunterAfterAnnounce(exileSeat);
                     room.setPhase(GamePhase.EXILE_DEATH_ANNOUNCE);
+                    PerceptionLogEvents.exileAnnounced(actionLog, room, exileSeat);
                     return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
                 }
                 var result = deathBus.apply(room, List.of(new DeathRecord(exileSeat, DeathCause.VOTE_EXILE)));
@@ -68,6 +78,7 @@ public final class ExileResolver {
                 }
                 room.setExileAnnouncedSeat(exileSeat);
                 room.setPhase(GamePhase.EXILE_DEATH_ANNOUNCE);
+                PerceptionLogEvents.exileAnnounced(actionLog, room, exileSeat);
                 return GameStateMachine.HandleActionResult.of(priorAck, GameOutcome.syncsAllAlive(room));
             }
         }

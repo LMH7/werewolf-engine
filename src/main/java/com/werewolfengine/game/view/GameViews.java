@@ -1,6 +1,5 @@
 package com.werewolfengine.game.view;
 
-import com.werewolfengine.game.lastwords.LastWordsFlow;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.model.PlayerState;
@@ -63,39 +62,12 @@ public final class GameViews {
                 seerTarget,
                 room.isWolfChatInPhase(),
                 speaker,
-                canAct(room, playerId)
+                SeatVisibility.canAct(room, playerId)
         );
     }
 
     public static boolean canAct(GameRoomState room, int viewerPlayerId) {
-        PlayerState viewer = room.getPlayer(viewerPlayerId);
-        if (viewer == null) {
-            return false;
-        }
-        if (room.getPhase() == GamePhase.HUNTER_SHOOT
-                && room.getHunterShooterSeat() != null
-                && room.getHunterShooterSeat() == viewerPlayerId) {
-            return true;
-        }
-        if (LastWordsFlow.isCurrentSpeaker(room, viewerPlayerId)) {
-            return true;
-        }
-        if (!viewer.isAlive()) {
-            return false;
-        }
-        return switch (room.getPhase()) {
-            case NIGHT_WOLF -> viewer.getRole() == Role.WEREWOLF;
-            case NIGHT_WITCH -> viewer.getRole() == Role.WITCH;
-            case NIGHT_SEER -> viewer.getRole() == Role.SEER;
-            case HUNTER_SHOOT, LAST_WORDS -> false;
-            case DAY_DISCUSS -> {
-                List<Integer> order = room.getDiscussOrder();
-                int idx = room.getDiscussIndex();
-                yield !order.isEmpty() && idx < order.size() && order.get(idx) == viewerPlayerId;
-            }
-            case DAY_VOTE -> viewer.isCanVote();
-            default -> false;
-        };
+        return SeatVisibility.canAct(room, viewerPlayerId);
     }
 
     private static Integer currentSpeaker(GameRoomState room) {

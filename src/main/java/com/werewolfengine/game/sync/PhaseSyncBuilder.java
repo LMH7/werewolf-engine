@@ -1,6 +1,6 @@
 package com.werewolfengine.game.sync;
 
-import com.werewolfengine.game.lastwords.LastWordsFlow;
+import com.werewolfengine.game.view.SeatVisibility;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.model.PlayerState;
@@ -23,7 +23,7 @@ public final class PhaseSyncBuilder {
         Role yourRole = viewer != null ? viewer.getRole() : null;
         GamePhase phase = room.getPhase();
 
-        boolean canAct = canAct(room, viewer, viewerPlayerId);
+        boolean canAct = SeatVisibility.canAct(room, viewerPlayerId);
         Boolean wolfChat = phase == GamePhase.NIGHT_WOLF ? room.isWolfChatInPhase() : null;
 
         Boolean idiotRev = idiotRevealedForViewer(viewer);
@@ -105,36 +105,6 @@ public final class PhaseSyncBuilder {
             return viewer.isIdiotRevealed();
         }
         return false;
-    }
-
-    private static boolean canAct(GameRoomState room, PlayerState viewer, int viewerPlayerId) {
-        if (viewer == null) {
-            return false;
-        }
-        if (room.getPhase() == GamePhase.HUNTER_SHOOT
-                && room.getHunterShooterSeat() != null
-                && room.getHunterShooterSeat() == viewerPlayerId) {
-            return true;
-        }
-        if (LastWordsFlow.isCurrentSpeaker(room, viewerPlayerId)) {
-            return true;
-        }
-        if (!viewer.isAlive()) {
-            return false;
-        }
-        return switch (room.getPhase()) {
-            case NIGHT_WOLF -> viewer.getRole() == Role.WEREWOLF;
-            case NIGHT_WITCH -> viewer.getRole() == Role.WITCH;
-            case NIGHT_SEER -> viewer.getRole() == Role.SEER;
-            case HUNTER_SHOOT, LAST_WORDS -> false;
-            case DAY_DISCUSS -> {
-                List<Integer> order = room.getDiscussOrder();
-                int idx = room.getDiscussIndex();
-                yield !order.isEmpty() && idx < order.size() && order.get(idx) == viewerPlayerId;
-            }
-            case DAY_VOTE -> viewer.isCanVote();
-            default -> false;
-        };
     }
 
     private static Boolean canVote(PlayerState viewer) {
