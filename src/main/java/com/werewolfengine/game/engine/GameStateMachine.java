@@ -16,9 +16,11 @@ import com.werewolfengine.game.night.NightSkillPipeline;
 import com.werewolfengine.game.death.DeathBus;
 import com.werewolfengine.game.setup.RoleAssigner;
 import com.werewolfengine.game.sync.PhaseSyncBuilder;
+import com.werewolfengine.game.observability.ActionLogService;
 import com.werewolfengine.game.win.GameOutcome;
 import com.werewolfengine.message.payload.ActionAckPayload;
 import com.werewolfengine.message.payload.PhaseSyncPayload;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -40,12 +42,44 @@ public class GameStateMachine {
 
     private final ConcurrentHashMap<String, GameRoomState> rooms = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> roomLocks = new ConcurrentHashMap<>();
-    private final DeathBus deathBus = new DeathBus();
-    private final NightSkillPipeline nightPipeline = new NightSkillPipeline(
-            new com.werewolfengine.game.night.NightActions(deathBus));
-    private final HunterShootFlow hunterFlow = new HunterShootFlow(deathBus);
+    private final DeathBus deathBus;
+    private final ActionLogService actionLog;
+    private final NightSkillPipeline nightPipeline;
+    private final HunterShootFlow hunterFlow;
     private final LastWordsFlow lastWordsFlow = new LastWordsFlow();
-    private final ExileResolver exileResolver = new ExileResolver(deathBus);
+    private final ExileResolver exileResolver;
+
+    public GameStateMachine() {
+        this(null);
+    }
+
+    @Autowired
+    public GameStateMachine(ActionLogService actionLog) {
+        this.actionLog = actionLog;
+        this.deathBus = new DeathBus(actionLog);
+        this.hunterFlow = new HunterShootFlow(deathBus, actionLog);
+        this.exileResolver = new ExileResolver(deathBus, actionLog);
+        this.nightPipeline = new NightSkillPipeline(
+                new com.werewolfengine.game.night.NightActions(
+                        deathBus, this::onWolfKillResolved, actionLog));
+    }
+
+    private void onWolfKillResolved(
+            GameRoomState room,
+            int targetSeat,
+            Map<Integer, Integer> wolfVotesBySeat
+    ) {
+        if (actionLog == null) {
+            return;
+        }
+        actionLog.recordSystemEvent(
+                room.getRoomId(),
+                room.getRound(),
+                GamePhase.NIGHT_WOLF,
+                "WOLF_KILL_RESOLVED target=" + targetSeat + " votes=" + wolfVotesBySeat,
+                targetSeat
+        );
+    }
 
     public GameRoomState createRoom(String roomId) {
         return rooms.computeIfAbsent(roomId, GameRoomState::new);
@@ -280,6 +314,7 @@ public class GameStateMachine {
             }
         }
         if (counts.isEmpty()) {
+            logVoteResolution(room, "VOTE_EMPTY nobody_exiled", null);
             return advanceAfterVote(room, priorAck, null);
         }
         int max = Collections.max(counts.values());
@@ -290,10 +325,25 @@ public class GameStateMachine {
             }
         }
         if (tops.size() != 1) {
+            logVoteResolution(room, "VOTE_TIE nobody_exiled tops=" + tops + " counts=" + counts, null);
             return advanceAfterVote(room, priorAck, null);
         }
         int exile = tops.getFirst();
+        logVoteResolution(room, "EXILE_RESOLVED seat=" + exile + " counts=" + counts, exile);
         return advanceAfterVote(room, priorAck, exile);
+    }
+
+    private void logVoteResolution(GameRoomState room, String message, Integer target) {
+        if (actionLog == null) {
+            return;
+        }
+        actionLog.recordSystemEvent(
+                room.getRoomId(),
+                room.getRound(),
+                GamePhase.DAY_VOTE,
+                message,
+                target
+        );
     }
 
     private HandleActionResult advanceAfterVote(GameRoomState room, ActionAck priorAck, Integer exileSeat) {
