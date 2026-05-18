@@ -22,7 +22,15 @@ public class AiPromptBuilder {
     }
 
     public String userMessage(GameViewContext view, Set<GameActionType> allowed) {
+        return userMessage(view, allowed, null);
+    }
+
+    public String userMessage(GameViewContext view, Set<GameActionType> allowed, String memoryBlock) {
         StringBuilder sb = new StringBuilder();
+        if (memoryBlock != null && !memoryBlock.isBlank()) {
+            sb.append(memoryBlock.trim()).append("\n\n");
+            sb.append("## 当前局面\n");
+        }
         sb.append("你的座位: ").append(view.seat()).append('\n');
         sb.append("你的角色: ").append(view.yourRole()).append('\n');
         sb.append("阶段: ").append(view.phase()).append(" 轮次: ").append(view.round()).append('\n');

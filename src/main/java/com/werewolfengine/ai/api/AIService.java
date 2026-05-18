@@ -3,11 +3,15 @@ package com.werewolfengine.ai.api;
 import com.werewolfengine.ai.agent.AiAgent;
 import com.werewolfengine.ai.config.AiProperties;
 import com.werewolfengine.ai.guard.AiLegalActions;
+import com.werewolfengine.ai.memory.MemoryPromptFormatter;
 import com.werewolfengine.ai.parse.AiIntentParser;
 import com.werewolfengine.ai.perceive.GameViewContext;
 import com.werewolfengine.ai.policy.MockAIPlayer;
 import com.werewolfengine.ai.prompt.AiPromptBuilder;
 import com.werewolfengine.ai.prompt.Persona;
+import com.werewolfengine.game.observability.ActionLogEntry;
+import com.werewolfengine.game.view.SeatPerceptionProjector;
+import com.werewolfengine.game.view.SeatPerceptionSlice;
 import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
@@ -43,6 +47,7 @@ public class AIService {
     private final AiProperties properties;
     private final MockAIPlayer mockAIPlayer;
     private final AiPromptBuilder promptBuilder;
+    private final MemoryPromptFormatter memoryFormatter;
     private final AiIntentParser intentParser;
     private final AiLegalActions legalActions;
     private final Optional<ChatModel> chatModel;
@@ -53,6 +58,7 @@ public class AIService {
             AiProperties properties,
             MockAIPlayer mockAIPlayer,
             AiPromptBuilder promptBuilder,
+            MemoryPromptFormatter memoryFormatter,
             AiIntentParser intentParser,
             AiLegalActions legalActions,
             @Autowired(required = false) ChatModel chatModel,
@@ -61,6 +67,7 @@ public class AIService {
         this.properties = properties;
         this.mockAIPlayer = mockAIPlayer;
         this.promptBuilder = promptBuilder;
+        this.memoryFormatter = memoryFormatter;
         this.intentParser = intentParser;
         this.legalActions = legalActions;
         this.chatModel = Optional.ofNullable(chatModel);
@@ -128,11 +135,27 @@ public class AIService {
         }
         Persona persona = agentFor(room, playerId).persona();
         String system = promptBuilder.systemMessage(persona);
-        String user = promptBuilder.userMessage(view, allowed);
+        String memoryBlock = buildMemoryBlock(room, playerId);
+        String user = promptBuilder.userMessage(view, allowed, memoryBlock);
         ChatResponse response = chatModel.orElseThrow().chat(
                 List.of(SystemMessage.from(system), UserMessage.from(user))
         );
         return intentParser.parse(llmPayload(response.aiMessage()));
+    }
+
+    private String buildMemoryBlock(GameRoomState room, int playerId) {
+        if (!properties.getMemory().isEnabled() || actionLog.isEmpty()) {
+            return null;
+        }
+        List<ActionLogEntry> log = actionLog.get().getLog(room.getRoomId());
+        SeatPerceptionSlice slice = SeatPerceptionProjector.project(room, playerId, log);
+        var opts = properties.getMemory();
+        var formatOpts = new MemoryPromptFormatter.FormatOptions(
+                opts.getMaxEvents(),
+                opts.getMaxChars(),
+                opts.isIncludeOwnThinking()
+        );
+        return memoryFormatter.format(slice, formatOpts, true).text();
     }
 
     private void recordLlmThinking(GameRoomState room, int playerId, PlayerIntent fromLlm) {

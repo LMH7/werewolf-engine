@@ -5,6 +5,7 @@ import com.werewolfengine.ai.config.AiProperties;
 import com.werewolfengine.ai.guard.AiLegalActions;
 import com.werewolfengine.ai.parse.AiIntentParser;
 import com.werewolfengine.ai.policy.MockAIPlayer;
+import com.werewolfengine.ai.memory.MemoryPromptFormatter;
 import com.werewolfengine.ai.prompt.AiPromptBuilder;
 import com.werewolfengine.game.engine.GameStateMachine;
 import com.werewolfengine.game.observability.ActionLogService;
@@ -45,6 +46,7 @@ public final class GameTestAiSupport {
                 props,
                 new MockAIPlayer(),
                 new AiPromptBuilder(),
+                new MemoryPromptFormatter(),
                 new AiIntentParser(),
                 new AiLegalActions(),
                 null,
