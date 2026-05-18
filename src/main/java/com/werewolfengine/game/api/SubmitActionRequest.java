@@ -7,6 +7,7 @@ public record SubmitActionRequest(
         int playerId,
         GameActionType action,
         Integer target,
-        GamePhase phase
+        GamePhase phase,
+        String content
 ) {
 }

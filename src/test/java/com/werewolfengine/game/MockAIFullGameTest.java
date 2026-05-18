@@ -19,8 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class MockAIFullGameTest {
 
-    private final GameStateMachine stateMachine = new GameStateMachine();
     private final ActionLogService actionLog = new ActionLogService();
+    private final GameStateMachine stateMachine = new GameStateMachine(actionLog);
     private final GameTestAiSupport.Harness harness = GameTestAiSupport.mockOnly(stateMachine, actionLog);
     private final MockGameRunner runner = harness.mockGameRunner();
 
@@ -47,9 +47,10 @@ class MockAIFullGameTest {
 
     @Test
     void gameEngineFacadeRunsMockAutoPlay() {
-        GameTestAiSupport.Harness h = GameTestAiSupport.mockOnly(stateMachine, actionLog);
+        GameStateMachine sm = new GameStateMachine(actionLog);
+        GameTestAiSupport.Harness h = GameTestAiSupport.mockOnly(sm, actionLog);
         GameEngineService engine = new GameEngineService(
-                stateMachine,
+                sm,
                 h.aiService(),
                 h.mockGameRunner(),
                 actionLog,

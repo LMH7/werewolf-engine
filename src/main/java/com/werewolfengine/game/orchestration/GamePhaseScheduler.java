@@ -34,8 +34,9 @@ public class GamePhaseScheduler {
             return TickResult.gameOver(room.getWinner() != null ? room.getWinner().name() : "");
         }
         if (phase == GamePhase.NIGHT_DEATH_ANNOUNCE || phase == GamePhase.EXILE_DEATH_ANNOUNCE) {
+            int round = room.getRound();
             stateMachine.advanceDayAnnounce(roomId);
-            actionLog.recordSystemPhase(room, phase, "advanceDayAnnounce");
+            actionLog.recordSystemEvent(roomId, round, phase, "advanceDayAnnounce", null);
             return TickResult.advanced(phase.name());
         }
         if (isPlayerPhase(phase)) {

@@ -1,7 +1,10 @@
 package com.werewolfengine.game.api;
 
-import com.werewolfengine.game.GameEngineService;
-import com.werewolfengine.game.GameStateMachine;
+import com.werewolfengine.game.engine.GameEngineService;
+import com.werewolfengine.game.orchestration.GamePhaseScheduler;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.orchestration.MockGameRunner;
+import com.werewolfengine.game.observability.ActionLogEntry;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.model.PlayerState;
@@ -72,7 +75,8 @@ public class InternalGameController {
                 request.playerId(),
                 request.action(),
                 request.target(),
-                request.phase()
+                request.phase(),
+                request.content()
         );
         GameEngineService.ActionResult result = gameEngine.submitAction(roomId, command);
         return Map.of(
@@ -87,6 +91,34 @@ public class InternalGameController {
         return Map.of(
                 "ack", result.ack(),
                 "phaseSyncs", result.phaseSyncs()
+        );
+    }
+
+    @PostMapping("/rooms/{roomId}/phase-tick")
+    public Map<String, Object> phaseTick(@PathVariable String roomId) {
+        GamePhaseScheduler.TickResult tick = gameEngine.tickPhase(roomId);
+        return Map.of(
+                "status", tick.status(),
+                "phase", tick.phase(),
+                "detail", tick.detail()
+        );
+    }
+
+    @GetMapping("/rooms/{roomId}/action-log")
+    public Map<String, Object> actionLog(@PathVariable String roomId) {
+        List<ActionLogEntry> entries = gameEngine.getActionLog(roomId);
+        return Map.of("roomId", roomId, "entries", entries);
+    }
+
+    @PostMapping("/rooms/{roomId}/mock-auto-play")
+    public Map<String, Object> mockAutoPlay(@PathVariable String roomId) {
+        MockGameRunner.RunResult result = gameEngine.runMockAutoPlay(roomId);
+        return Map.of(
+                "outcome", result.outcome(),
+                "steps", result.steps(),
+                "winner", result.winner() != null ? result.winner() : "",
+                "phase", result.phase(),
+                "mode", "ai-llm-with-mock-fallback"
         );
     }
 

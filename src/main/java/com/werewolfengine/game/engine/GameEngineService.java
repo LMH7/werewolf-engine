@@ -3,6 +3,7 @@ package com.werewolfengine.game.engine;
 import com.werewolfengine.ai.api.AIService;
 import com.werewolfengine.ai.api.PlayerIntent;
 import com.werewolfengine.game.model.GameActionCommand;
+import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.observability.ActionLogEntry;
@@ -59,8 +60,15 @@ public class GameEngineService {
     }
 
     public ActionResult submitAction(String roomId, GameActionCommand command) {
+        GameRoomState before = stateMachine.getRoom(roomId).orElseThrow();
+        int round = before.getRound();
+        GamePhase phase = command.clientPhase() != null ? command.clientPhase() : before.getPhase();
+        Integer effectiveTarget = command.action() == GameActionType.SAVE
+                ? before.getPendingWolfKillTarget()
+                : command.target();
         GameStateMachine.HandleActionResult result = stateMachine.handleAction(roomId, command);
-        stateMachine.getRoom(roomId).ifPresent(room -> actionLog.recordAction(room, command, result.ack()));
+        GameRoomState after = stateMachine.getRoom(roomId).orElse(before);
+        actionLog.recordPlayerAction(roomId, round, phase, after, command, result.ack(), effectiveTarget);
         ActionAckPayload ack = stateMachine.toPayload(result.ack());
         return new ActionResult(ack, result.phaseSyncs());
     }
@@ -70,11 +78,12 @@ public class GameEngineService {
      * (timer / gateway); not a player GAME_ACTION.
      */
     public ActionResult advanceDayAnnounce(String roomId) {
-        GamePhase before = stateMachine.getRoom(roomId).map(GameRoomState::getPhase).orElse(null);
+        GameRoomState beforeRoom = stateMachine.getRoom(roomId).orElse(null);
+        GamePhase before = beforeRoom != null ? beforeRoom.getPhase() : null;
+        int round = beforeRoom != null ? beforeRoom.getRound() : 0;
         GameStateMachine.HandleActionResult result = stateMachine.advanceDayAnnounce(roomId);
-        if (before != null) {
-            stateMachine.getRoom(roomId).ifPresent(room ->
-                    actionLog.recordSystemPhase(room, before, "advanceDayAnnounce"));
+        if (before != null && beforeRoom != null) {
+            actionLog.recordSystemEvent(beforeRoom.getRoomId(), round, before, "advanceDayAnnounce", null);
         }
         return new ActionResult(stateMachine.toPayload(result.ack()), result.phaseSyncs());
     }

@@ -3,7 +3,9 @@ package com.werewolfengine.game.orchestration;
 import com.werewolfengine.ai.api.AIService;
 import com.werewolfengine.ai.api.PlayerIntent;
 import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.model.ActionAck;
 import com.werewolfengine.game.model.GameActionCommand;
+import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
 import com.werewolfengine.game.model.GameRoomState;
 import com.werewolfengine.game.observability.ActionLogService;
@@ -42,7 +44,10 @@ public class AiTurnCoordinator {
     public boolean tickOneStep(String roomId, GameRoomState room) {
         return switch (room.getPhase()) {
             case NIGHT_DEATH_ANNOUNCE, EXILE_DEATH_ANNOUNCE -> {
+                GamePhase before = room.getPhase();
+                int round = room.getRound();
                 stateMachine.advanceDayAnnounce(roomId);
+                actionLog.recordSystemEvent(roomId, round, before, "advanceDayAnnounce", null);
                 yield true;
             }
             default -> submitNextAiIntent(roomId, room);
@@ -61,15 +66,27 @@ public class AiTurnCoordinator {
             return false;
         }
         PlayerIntent in = intent.get();
+        int round = fresh.getRound();
+        GamePhase phase = fresh.getPhase();
+        Integer effectiveTarget = effectiveLogTarget(fresh, in.action(), in.target());
         GameActionCommand cmd = new GameActionCommand(
                 playerId,
                 in.action(),
                 in.target(),
-                fresh.getPhase(),
+                phase,
                 in.content()
         );
         GameStateMachine.HandleActionResult result = stateMachine.handleAction(roomId, cmd);
-        stateMachine.getRoom(roomId).ifPresent(r -> actionLog.recordAction(r, cmd, result.ack()));
+        GameRoomState after = stateMachine.getRoom(roomId).orElse(fresh);
+        ActionAck ack = result.ack();
+        actionLog.recordPlayerAction(roomId, round, phase, after, cmd, ack, effectiveTarget);
         return true;
+    }
+
+    private static Integer effectiveLogTarget(GameRoomState room, GameActionType action, Integer commandTarget) {
+        if (action == GameActionType.SAVE) {
+            return room.getPendingWolfKillTarget();
+        }
+        return commandTarget;
     }
 }
