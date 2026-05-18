@@ -1,6 +1,6 @@
 package com.werewolfengine.game.night;
 
-import com.werewolfengine.game.GameStateMachine;
+import com.werewolfengine.game.engine.GameStateMachine;
 import com.werewolfengine.game.death.DeathBus;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameRoomState;

@@ -5,7 +5,7 @@
 | 状态 | 已采纳（Accepted，窄版范围见 PRD §4.3.8.4） |
 | 日期 | 2026-05-16 |
 | 决策者 | 游戏引擎（A） |
-| 关联 | [PRD §4.3.8.4](../requirements-mvp-v0.1.md)、[ADR-002](002-death-bus-and-hunter-flow.md)、[architecture-design-spec.md](../architecture-design-spec.md) |
+| 关联 | [PRD §4.3.8.4](../progress/requirements-mvp-v0.1.md)、[ADR-002](002-death-bus-and-hunter-flow.md)、[architecture](../architecture/architecture-design-spec.md) |
 
 ## 背景
 

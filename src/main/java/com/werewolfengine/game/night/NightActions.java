@@ -1,10 +1,8 @@
 package com.werewolfengine.game.night;
 
-import com.werewolfengine.game.GameOutcome;
-import com.werewolfengine.game.GameStateMachine;
-import com.werewolfengine.game.NightResolver;
-import com.werewolfengine.game.PhaseSyncBuilder;
-import com.werewolfengine.game.WolfVoteResolver;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.sync.PhaseSyncBuilder;
+import com.werewolfengine.game.win.GameOutcome;
 import com.werewolfengine.game.death.DeathBus;
 import com.werewolfengine.game.model.ActionAck;
 import com.werewolfengine.game.model.ActionErrorCode;
@@ -22,7 +20,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Night-phase actions for {@link NightSkillPipeline} (wolf â†’ seer â†’ witch).
+ * Night-phase actions for {@link NightSkillPipeline} (wolf â?? seer â?? witch).
  */
 public final class NightActions {
 
@@ -85,13 +83,13 @@ public final class NightActions {
         }
         if (target.getRole() == Role.WEREWOLF && !room.isWolfChatInPhase()) {
             return fail(room, ActionErrorCode.WOLF_CHAT_REQUIRED,
-                    "åˆ€ç‹¼é˜Ÿå‹æˆ–è‡ªåˆ€å‰ï¼Œé¡»åœ¨æœ¬å¤œæ™šç‹¼äººé˜¶æ®µå…ˆè¿›è¡Œç‹¼é˜Ÿé¢‘é“å•†è®®");
+                    "å??ç?¼é??å?æ??è?ªå??å?ï¼?é¡»å?¨æ?¬å¤?æ??ç?¼äººé?¶æ®µå??è¿?è¡?ç?¼é??é¢?é?å??è®®");
         }
 
         room.getWolfKillVotes().put(actor.getPlayerId(), targetId);
         room.appendWolfKillEvent(actor.getPlayerId(), targetId);
 
-        ActionAck ack = ActionAck.ok("åˆ€äººç›®æ ‡å·²è®°å½•", room.getPhase(), "WAITING_WOLF_CONSENSUS");
+        ActionAck ack = ActionAck.ok("å??äººç?®æ ?å·²è®°å½?", room.getPhase(), "WAITING_WOLF_CONSENSUS");
         Optional<GameStateMachine.HandleActionResult> transition = tryAdvanceAfterAllWolvesVoted(room);
         return transition.orElseGet(() -> GameStateMachine.HandleActionResult.of(ack, List.of()));
     }
@@ -101,7 +99,7 @@ public final class NightActions {
             return fail(room, ActionErrorCode.INVALID_ACTION, "Only wolves can WOLF_CHAT");
         }
         room.setWolfChatInPhase(true);
-        ActionAck ack = ActionAck.ok("ç‹¼é˜Ÿå•†è®®å·²è®°å½•", room.getPhase(), null);
+        ActionAck ack = ActionAck.ok("ç?¼é??å??è®®å·²è®°å½?", room.getPhase(), null);
         return GameStateMachine.HandleActionResult.of(ack, buildWolfPhaseSyncs(room));
     }
 
@@ -120,7 +118,7 @@ public final class NightActions {
         room.setPendingWolfKillTarget(resolved);
         room.clearWolfVotesAndLog();
 
-        ActionAck ack = ActionAck.ok("ç‹¼äººé˜¶æ®µç»“æŸï¼Œåˆ€å£å·²ç»“ç®—", GamePhase.NIGHT_SEER, null);
+        ActionAck ack = ActionAck.ok("ç?¼äººé?¶æ®µç»?æ?ï¼?å??å£å·²ç»?ç®?", GamePhase.NIGHT_SEER, null);
         return Optional.of(runAutopilotNightPhases(room, enterNightSeer(room, ack)));
     }
 
@@ -132,7 +130,7 @@ public final class NightActions {
         for (int i = 0; i < 6; i++) {
             if (room.getPhase() == GamePhase.NIGHT_SEER && !seerCanAct(room) && !room.isSeerActedThisNight()) {
                 room.setSeerActedThisNight(true);
-                ActionAck auto = ActionAck.ok("é¢„è¨€å®¶å·²å‡ºå±€æˆ–æœªåœ¨åœºï¼Œæœ¬å¤œè·³è¿‡æŸ¥éªŒ", GamePhase.NIGHT_SEER, null);
+                ActionAck auto = ActionAck.ok("é¢?è¨?å®¶å·²å?ºå±?æ??æ?ªå?¨å?ºï¼?æ?¬å¤?è·³è¿?æ?¥éª?", GamePhase.NIGHT_SEER, null);
                 r = enterNightWitch(room, auto);
                 continue;
             }
@@ -140,7 +138,7 @@ public final class NightActions {
                 room.setWitchUsedSaveTonight(false);
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
-                ActionAck auto = ActionAck.ok("å¥³å·«å·²å‡ºå±€æˆ–æœªåœ¨åœºï¼Œæœ¬å¤œè·³è¿‡å¥³å·«é˜¶æ®µ", GamePhase.NIGHT_WITCH, null);
+                ActionAck auto = ActionAck.ok("å¥³å·«å·²å?ºå±?æ??æ?ªå?¨å?ºï¼?æ?¬å¤?è·³è¿?å¥³å·«é?¶æ®µ", GamePhase.NIGHT_WITCH, null);
                 r = finishNightAfterWitch(room, auto);
                 break;
             }
@@ -178,7 +176,7 @@ public final class NightActions {
             return fail(room, ActionErrorCode.INVALID_ACTION, "Only witch acts in NIGHT_WITCH");
         }
         if (room.isWitchActedThisNight()) {
-            return fail(room, ActionErrorCode.INVALID_ACTION, "å¥³å·«æœ¬å¤œå·²è¡ŒåŠ¨");
+            return fail(room, ActionErrorCode.INVALID_ACTION, "å¥³å·«æ?¬å¤?å·²è¡?å?¨");
         }
 
         return switch (command.action()) {
@@ -186,45 +184,45 @@ public final class NightActions {
                 room.setWitchUsedSaveTonight(false);
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
-                ActionAck ack = ActionAck.ok("å¥³å·«è·³è¿‡", room.getPhase(), null);
+                ActionAck ack = ActionAck.ok("å¥³å·«è·³è¿?", room.getPhase(), null);
                 yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             case SAVE -> {
                 Integer kill = room.getPendingWolfKillTarget();
                 if (kill == null) {
-                    yield fail(room, ActionErrorCode.INVALID_ACTION, "æœ¬å¤œæ— åˆ€å£å¯æ•‘");
+                    yield fail(room, ActionErrorCode.INVALID_ACTION, "æ?¬å¤?æ? å??å£å¯æ??");
                 }
                 if (!room.isWitchAntidoteRemaining()) {
-                    yield fail(room, ActionErrorCode.INVALID_ACTION, "è§£è¯å·²ç”¨å°½");
+                    yield fail(room, ActionErrorCode.INVALID_ACTION, "è§£è¯å·²ç?¨å°½");
                 }
                 if (room.getWitchPoisonTargetTonight() != null) {
-                    yield fail(room, ActionErrorCode.INVALID_ACTION, "å·²é€‰æ¯’è¯ï¼Œä¸èƒ½å†æ•‘");
+                    yield fail(room, ActionErrorCode.INVALID_ACTION, "å·²é??æ¯?è¯ï¼?ä¸è?½å?æ??");
                 }
                 room.setWitchUsedSaveTonight(true);
                 room.setWitchPoisonTargetTonight(null);
                 room.setWitchActedThisNight(true);
-                ActionAck ack = ActionAck.ok("å·²ä½¿ç”¨è§£è¯", room.getPhase(), null);
+                ActionAck ack = ActionAck.ok("å·²ä½¿ç?¨è§£è¯", room.getPhase(), null);
                 yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             case POISON -> {
                 Integer t = command.target();
                 if (t == null) {
-                    yield fail(room, ActionErrorCode.INVALID_TARGET, "æ¯’æ€éœ€è¦ target");
+                    yield fail(room, ActionErrorCode.INVALID_TARGET, "æ¯?æ?é??è¦ target");
                 }
                 if (!room.isWitchPoisonRemaining()) {
-                    yield fail(room, ActionErrorCode.INVALID_ACTION, "æ¯’è¯å·²ç”¨å°½");
+                    yield fail(room, ActionErrorCode.INVALID_ACTION, "æ¯?è¯å·²ç?¨å°½");
                 }
                 PlayerState tgt = room.getPlayer(t);
                 if (tgt == null || !tgt.isAlive()) {
-                    yield fail(room, ActionErrorCode.INVALID_TARGET, "ç›®æ ‡å¿…é¡»å­˜æ´»");
+                    yield fail(room, ActionErrorCode.INVALID_TARGET, "ç?®æ ?å¿?é¡»å­?æ´»");
                 }
                 if (Boolean.TRUE.equals(room.getWitchUsedSaveTonight())) {
-                    yield fail(room, ActionErrorCode.INVALID_ACTION, "åŒå¤œä¸èƒ½æ•‘åå†æ¯’");
+                    yield fail(room, ActionErrorCode.INVALID_ACTION, "å?å¤?ä¸è?½æ??å?å?æ¯?");
                 }
                 room.setWitchUsedSaveTonight(false);
                 room.setWitchPoisonTargetTonight(t);
                 room.setWitchActedThisNight(true);
-                ActionAck ack = ActionAck.ok("å·²ä½¿ç”¨æ¯’è¯", room.getPhase(), null);
+                ActionAck ack = ActionAck.ok("å·²ä½¿ç?¨æ¯?è¯", room.getPhase(), null);
                 yield runAutopilotNightPhases(room, finishNightAfterWitch(room, ack));
             }
             default -> fail(room, ActionErrorCode.INVALID_ACTION,
@@ -241,21 +239,21 @@ public final class NightActions {
             return fail(room, ActionErrorCode.INVALID_ACTION, "Only seer acts in NIGHT_SEER");
         }
         if (room.isSeerActedThisNight()) {
-            return fail(room, ActionErrorCode.INVALID_ACTION, "é¢„è¨€å®¶æœ¬å¤œå·²æŸ¥éªŒ");
+            return fail(room, ActionErrorCode.INVALID_ACTION, "é¢?è¨?å®¶æ?¬å¤?å·²æ?¥éª?");
         }
         if (command.action() != GameActionType.CHECK) {
             return fail(room, ActionErrorCode.INVALID_ACTION, "NIGHT_SEER expects CHECK");
         }
         Integer t = command.target();
         if (t == null) {
-            return fail(room, ActionErrorCode.INVALID_TARGET, "æŸ¥éªŒéœ€è¦ target");
+            return fail(room, ActionErrorCode.INVALID_TARGET, "æ?¥éª?é??è¦ target");
         }
         if (t == actor.getPlayerId()) {
-            return fail(room, ActionErrorCode.INVALID_TARGET, "ä¸èƒ½æŸ¥éªŒè‡ªå·±");
+            return fail(room, ActionErrorCode.INVALID_TARGET, "ä¸è?½æ?¥éª?è?ªå·±");
         }
         PlayerState tgt = room.getPlayer(t);
         if (tgt == null || !tgt.isAlive()) {
-            return fail(room, ActionErrorCode.INVALID_TARGET, "ç›®æ ‡å¿…é¡»å­˜æ´»");
+            return fail(room, ActionErrorCode.INVALID_TARGET, "ç?®æ ?å¿?é¡»å­?æ´»");
         }
 
         SeerCheckResult result = SeerCheckResult.forRole(tgt.getRole());
@@ -264,7 +262,7 @@ public final class NightActions {
         room.setSeerCheckTargetTonight(t);
         room.setSeerActedThisNight(true);
 
-        String msg = result == SeerCheckResult.WOLF ? "æŸ¥æ€ï¼šç‹¼äºº" : "æŸ¥éªŒï¼šå¥½äºº";
+        String msg = result == SeerCheckResult.WOLF ? "æ?¥æ?ï¼?ç?¼äºº" : "æ?¥éª?ï¼?å¥½äºº";
         ActionAck ack = ActionAck.ok(msg, room.getPhase(), null);
         return runAutopilotNightPhases(room, enterNightWitch(room, ack));
     }

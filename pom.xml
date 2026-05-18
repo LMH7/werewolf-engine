@@ -30,6 +30,7 @@
         <java.version>21</java.version>
         <!-- Spring Boot 4 requires langchain4j *-spring-boot4-starter (see architecture-design-spec §9.1) -->
         <langchain4j.version>1.15.0-beta25</langchain4j.version>
+        <langchain4j.core.version>1.15.0</langchain4j.core.version>
     </properties>
     <dependencies>
         <dependency>
@@ -55,6 +56,11 @@
             <scope>runtime</scope>
         </dependency>
 
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-core</artifactId>
+            <version>${langchain4j.core.version}</version>
+        </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-spring-boot4-starter</artifactId>

@@ -5,7 +5,7 @@
 | 状态 | 已采纳（Accepted，与 PRD v1.0.11 §4.3.8 同步） |
 | 日期 | 2026-05-16 |
 | 决策者 | 游戏引擎（A） |
-| 关联 | [PRD §4.3.8](../requirements-mvp-v0.1.md)、[ADR-001](001-night-skill-pipeline.md)、[architecture-design-spec.md](../architecture-design-spec.md) |
+| 关联 | [PRD §4.3.8](../progress/requirements-mvp-v0.1.md)、[ADR-001](001-night-skill-pipeline.md)、[architecture](../architecture/architecture-design-spec.md) |
 
 ## 背景
 

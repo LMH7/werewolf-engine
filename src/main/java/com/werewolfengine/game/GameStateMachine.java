@@ -10,6 +10,7 @@ import com.werewolfengine.game.model.PlayerState;
 import com.werewolfengine.game.model.RoomStatus;
 import com.werewolfengine.game.exile.ExileResolver;
 import com.werewolfengine.game.hunter.HunterShootFlow;
+import com.werewolfengine.game.lastwords.LastWordsFlow;
 import com.werewolfengine.game.model.SpeakDirection;
 import com.werewolfengine.game.night.NightSkillPipeline;
 import com.werewolfengine.game.death.DeathBus;
@@ -40,6 +41,7 @@ public class GameStateMachine {
     private final NightSkillPipeline nightPipeline = new NightSkillPipeline(
             new com.werewolfengine.game.night.NightActions(deathBus));
     private final HunterShootFlow hunterFlow = new HunterShootFlow(deathBus);
+    private final LastWordsFlow lastWordsFlow = new LastWordsFlow();
     private final ExileResolver exileResolver = new ExileResolver(deathBus);
 
     public GameRoomState createRoom(String roomId) {
@@ -97,7 +99,8 @@ public class GameStateMachine {
             boolean hunterShootAsDead = room.getPhase() == GamePhase.HUNTER_SHOOT
                     && room.getHunterShooterSeat() != null
                     && command.playerId() == room.getHunterShooterSeat();
-            if (!hunterShootAsDead && (actor == null || !actor.isAlive())) {
+            boolean lastWordsTurn = LastWordsFlow.isCurrentSpeaker(room, command.playerId());
+            if (!hunterShootAsDead && !lastWordsTurn && (actor == null || !actor.isAlive())) {
                 return failAck(ActionErrorCode.INVALID_ACTION, "Player not alive or unknown", room);
             }
 
@@ -108,6 +111,15 @@ public class GameStateMachine {
                         () -> enterDayDiscuss(room),
                         r -> continueAfterVoteResolution(r,
                                 ActionAck.ok("猎人阶段结束", GamePhase.HUNTER_SHOOT, null)));
+                case LAST_WORDS -> lastWordsFlow.handleAction(room, command, () -> {
+                    if (room.isLastWordsAfterExile()) {
+                        room.setLastWordsAfterExile(false);
+                        return hunterFlow.finishExileAfterAnnounce(room,
+                                r -> continueAfterVoteResolution(r,
+                                        ActionAck.ok("遗言结束", GamePhase.LAST_WORDS, null)));
+                    }
+                    return hunterFlow.finishNightAfterAnnounce(room, () -> enterDayDiscuss(room));
+                });
                 case DAY_DISCUSS -> handleDayDiscuss(room, actor, command);
                 case DAY_VOTE -> handleDayVote(room, actor, command);
                 default -> failAck(ActionErrorCode.INVALID_PHASE,

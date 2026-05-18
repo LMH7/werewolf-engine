@@ -1,5 +1,6 @@
 package com.werewolfengine.game;
 
+import com.werewolfengine.game.engine.GameStateMachine;
 import com.werewolfengine.game.model.ActionErrorCode;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameActionType;
@@ -30,6 +31,16 @@ class GameStateMachineTest {
     }
 
     /** 狼刀后：预言家 → 女巫 → 公布死讯（测试内自动 advance）。 */
+    private void completeLastWords(String roomId) {
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        while (room.getPhase() == GamePhase.LAST_WORDS) {
+            int speaker = room.getLastWordsOrder().get(room.getLastWordsIndex());
+            sm.handleAction(roomId,
+                    new GameActionCommand(speaker, GameActionType.SKIP_SPEAK, null, GamePhase.LAST_WORDS));
+            room = sm.getRoom(roomId).orElseThrow();
+        }
+    }
+
     private void completeNightToAnnounce(String roomId, GameRoomState room) {
         if (room.getPhase() == GamePhase.NIGHT_SEER && seerAlive(room)) {
             int seer = room.seerSeat();
@@ -50,6 +61,13 @@ class GameStateMachineTest {
     private static boolean seerAlive(GameRoomState room) {
         int ss = room.seerSeat();
         return ss > 0 && room.getPlayer(ss) != null && room.getPlayer(ss).isAlive();
+    }
+
+    private static int firstAliveSeatWithRole(GameRoomState room, Role role) {
+        return room.alivePlayerIds().stream()
+                .filter(id -> room.getPlayer(id).getRole() == role)
+                .findFirst()
+                .orElseThrow();
     }
 
     private static boolean witchAlive(GameRoomState room) {
@@ -182,8 +200,43 @@ class GameStateMachineTest {
 
         sm.advanceDayAnnounce(roomId);
         room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.LAST_WORDS);
+        assertThat(room.getLastWordsOrder()).containsExactly(villager);
+        completeLastWords(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
         assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_DISCUSS);
         assertThat(room.getHunterShooterSeat()).isNull();
+    }
+
+    @Test
+    void secondNightDeath_skipsLastWords() {
+        String roomId = "r_night2";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int villager = firstAliveSeatWithRole(room, Role.VILLAGER);
+
+        allWolvesKill(sm, roomId, room, villager);
+        completeNightToAnnounce(roomId, sm.getRoom(roomId).orElseThrow());
+        sm.advanceDayAnnounce(roomId);
+        completeLastWords(roomId);
+
+        room = sm.getRoom(roomId).orElseThrow();
+        room.setRound(2);
+        room.setPhase(GamePhase.NIGHT_WOLF);
+        int victim = firstAliveSeatWithRole(room, Role.VILLAGER);
+        allWolvesKill(sm, roomId, room, victim);
+        completeNightToAnnounce(roomId, sm.getRoom(roomId).orElseThrow());
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getRound()).isEqualTo(2);
+        assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_DEATH_ANNOUNCE);
+
+        sm.advanceDayAnnounce(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isNotEqualTo(GamePhase.LAST_WORDS);
+        assertThat(room.getPhase()).isEqualTo(GamePhase.DAY_DISCUSS);
     }
 
     @Test
@@ -211,8 +264,45 @@ class GameStateMachineTest {
 
         sm.advanceDayAnnounce(roomId);
         room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.LAST_WORDS);
+        completeLastWords(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
         assertThat(room.getPhase()).isEqualTo(GamePhase.HUNTER_SHOOT);
         assertThat(room.getHunterShooterSeat()).isEqualTo(hunter);
+    }
+
+    @Test
+    void exiledPlayer_hasLastWordsBeforeCheckWin() {
+        String roomId = "r_exile_words";
+        sm.createRoom(roomId);
+        sm.markAllReady(roomId);
+        sm.startGame(roomId);
+        GameRoomState room = sm.getRoom(roomId).orElseThrow();
+        int villager = firstAliveSeatWithRole(room, Role.VILLAGER);
+
+        room.setPhase(GamePhase.DAY_VOTE);
+        for (int id : room.alivePlayerIds()) {
+            PlayerState p = room.getPlayer(id);
+            if (p.isCanVote()) {
+                sm.handleAction(roomId,
+                        new GameActionCommand(id, GameActionType.VOTE, villager, GamePhase.DAY_VOTE));
+            }
+        }
+
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.EXILE_DEATH_ANNOUNCE);
+        assertThat(room.getPlayer(villager).isAlive()).isFalse();
+
+        sm.advanceDayAnnounce(roomId);
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.LAST_WORDS);
+        assertThat(room.getLastWordsOrder()).containsExactly(villager);
+
+        sm.handleAction(roomId,
+                new GameActionCommand(villager, GameActionType.SKIP_SPEAK, null, GamePhase.LAST_WORDS));
+        room = sm.getRoom(roomId).orElseThrow();
+        assertThat(room.getPhase()).isEqualTo(GamePhase.NIGHT_WOLF);
+        assertThat(room.getRound()).isEqualTo(2);
     }
 
     @Test

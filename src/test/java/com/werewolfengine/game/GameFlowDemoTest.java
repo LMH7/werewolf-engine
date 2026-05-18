@@ -1,5 +1,6 @@
 package com.werewolfengine.game;
 
+import com.werewolfengine.game.engine.GameStateMachine;
 import com.werewolfengine.game.model.GameActionCommand;
 import com.werewolfengine.game.model.GameActionType;
 import com.werewolfengine.game.model.GamePhase;
@@ -79,9 +80,19 @@ class GameFlowDemoTest {
         sm.advanceDayAnnounce(roomId);
         room = refresh(roomId);
 
+        if (room.getPhase() == GamePhase.LAST_WORDS) {
+            section("5. 遗言 LAST_WORDS（首夜昨夜死者）");
+            println("  遗言顺序: " + room.getLastWordsOrder());
+            for (int seat : new java.util.ArrayList<>(room.getLastWordsOrder())) {
+                logAction("玩家 " + seat, "SKIP_SPEAK（遗言）");
+                sm.handleAction(roomId, cmd(seat, GameActionType.SKIP_SPEAK, null, GamePhase.LAST_WORDS));
+                room = refresh(roomId);
+            }
+        }
+
         // ── 猎人（若昨夜刀中猎人）──
         if (room.getPhase() == GamePhase.HUNTER_SHOOT) {
-            section("5. 猎人开枪 HUNTER_SHOOT（仅在公布死讯之后）");
+            section("6. 猎人开枪 HUNTER_SHOOT（遗言之后）");
             int hunter = room.getHunterShooterSeat();
             int shootTarget = room.alivePlayerIds().stream()
                     .filter(id -> id != hunter)
@@ -91,11 +102,11 @@ class GameFlowDemoTest {
             sm.handleAction(roomId, cmd(hunter, GameActionType.SHOOT, shootTarget, GamePhase.HUNTER_SHOOT));
             room = refresh(roomId);
         } else {
-            section("5. 猎人开枪 — 跳过（本局昨夜无合格猎人）");
+            section("6. 猎人开枪 — 跳过（本局昨夜无合格猎人）");
         }
 
         // ── 白天讨论 ──
-        section("6. 白天 · 讨论 DAY_DISCUSS");
+        section("7. 白天 · 讨论 DAY_DISCUSS");
         println("  发言锚点座位: " + room.getSpeakAnchorSeat());
         println("  发言方向: " + room.getSpeakDirection());
         println("  发言顺序: " + room.getDiscussOrder());
@@ -107,7 +118,7 @@ class GameFlowDemoTest {
             println("  下一位发言人索引: " + room.getDiscussIndex());
         }
 
-        section("7. 当前局面快照");
+        section("8. 当前局面快照");
         println("  阶段: " + room.getPhase() + "  |  轮次: " + room.getRound());
         println("  存活: " + room.alivePlayerIds());
         for (int id : room.alivePlayerIds()) {

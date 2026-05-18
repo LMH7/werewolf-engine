@@ -1,9 +1,10 @@
 package com.werewolfengine.game.hunter;
 
-import com.werewolfengine.game.GameOutcome;
-import com.werewolfengine.game.GameStateMachine;
-import com.werewolfengine.game.PhaseSyncBuilder;
+import com.werewolfengine.game.engine.GameStateMachine;
+import com.werewolfengine.game.sync.PhaseSyncBuilder;
+import com.werewolfengine.game.win.GameOutcome;
 import com.werewolfengine.game.death.DeathBus;
+import com.werewolfengine.game.lastwords.LastWordsFlow;
 import com.werewolfengine.game.death.DeathCause;
 import com.werewolfengine.game.death.DeathRecord;
 import com.werewolfengine.game.model.ActionAck;
@@ -24,6 +25,7 @@ import java.util.List;
 public final class HunterShootFlow {
 
     private final DeathBus deathBus;
+    private final LastWordsFlow lastWordsFlow = new LastWordsFlow();
 
     public HunterShootFlow() {
         this(new DeathBus());
@@ -43,15 +45,16 @@ public final class HunterShootFlow {
         if (early != null) {
             return early;
         }
-        Integer pending = room.getPendingHunterAfterAnnounce();
-        room.setPendingHunterAfterAnnounce(null);
-        if (pending != null) {
-            room.setHunterShootAfterExile(false);
-            return enterHunterShoot(room, pending, "天亮公布结束，进入猎人阶段");
+        if (lastWordsFlow.shouldEnterAfterNightAnnounce(room)) {
+            room.setLastWordsAfterExile(false);
+            ActionAck ack = ActionAck.ok("天亮公布结束，进入遗言", GamePhase.NIGHT_DEATH_ANNOUNCE, null);
+            return lastWordsFlow.tryEnter(
+                    room,
+                    lastWordsFlow.nightLastWordsQueue(room),
+                    ack,
+                    () -> finishNightAfterAnnounce(room, enterDayDiscuss));
         }
-        ActionAck ack = ActionAck.ok("天亮公布结束，进入讨论", GamePhase.NIGHT_DEATH_ANNOUNCE, null);
-        enterDayDiscuss.run();
-        return GameStateMachine.HandleActionResult.of(ack, GameOutcome.syncsAllAlive(room));
+        return finishNightAfterAnnounce(room, enterDayDiscuss);
     }
 
     public GameStateMachine.HandleActionResult advanceExileDeathAnnounce(
@@ -64,13 +67,45 @@ public final class HunterShootFlow {
         if (early != null) {
             return early;
         }
+        if (lastWordsFlow.shouldEnterAfterExileAnnounce(room)) {
+            room.setLastWordsAfterExile(true);
+            ActionAck ack = ActionAck.ok("放逐公布结束，进入遗言", GamePhase.EXILE_DEATH_ANNOUNCE, null);
+            return lastWordsFlow.tryEnter(
+                    room,
+                    lastWordsFlow.exileLastWordsQueue(room),
+                    ack,
+                    () -> finishExileAfterAnnounce(room, continueAfterVote));
+        }
+        return finishExileAfterAnnounce(room, continueAfterVote);
+    }
+
+    public GameStateMachine.HandleActionResult finishNightAfterAnnounce(
+            GameRoomState room,
+            Runnable enterDayDiscuss
+    ) {
         Integer pending = room.getPendingHunterAfterAnnounce();
         room.setPendingHunterAfterAnnounce(null);
         if (pending != null) {
-            room.setHunterShootAfterExile(true);
-            return enterHunterShoot(room, pending, "放逐公布结束，进入猎人阶段");
+            room.setHunterShootAfterExile(false);
+            return enterHunterShoot(room, pending, "遗言结束，进入猎人阶段");
         }
-        ActionAck ack = ActionAck.ok("放逐公布结束", GamePhase.EXILE_DEATH_ANNOUNCE, null);
+        ActionAck ack = ActionAck.ok("遗言结束，进入讨论", GamePhase.NIGHT_DEATH_ANNOUNCE, null);
+        enterDayDiscuss.run();
+        return GameStateMachine.HandleActionResult.of(ack, GameOutcome.syncsAllAlive(room));
+    }
+
+    public GameStateMachine.HandleActionResult finishExileAfterAnnounce(
+            GameRoomState room,
+            java.util.function.Function<GameRoomState, GameStateMachine.HandleActionResult> continueAfterVote
+    ) {
+        Integer pending = room.getPendingHunterAfterAnnounce();
+        room.setPendingHunterAfterAnnounce(null);
+        room.setExileAnnouncedSeat(null);
+        if (pending != null) {
+            room.setHunterShootAfterExile(true);
+            return enterHunterShoot(room, pending, "遗言结束，进入猎人阶段");
+        }
+        ActionAck ack = ActionAck.ok("遗言结束", GamePhase.EXILE_DEATH_ANNOUNCE, null);
         return continueAfterVote.apply(room);
     }
 
