@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-night text-gray-100 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-2 bg-gold text-night font-bold rounded-lg 
+           hover:bg-yellow-500 transition-colors duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply px-6 py-2 bg-blood text-white font-bold rounded-lg 
+           hover:bg-red-700 transition-colors duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-2 bg-gray-700 text-gray-200 font-bold rounded-lg 
+           hover:bg-gray-600 transition-colors duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply bg-gray-900/80 border border-gray-700 rounded-xl p-4 backdrop-blur-sm;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg 
+           text-gray-100 placeholder-gray-500 
+           focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold;
+  }
+
+  .seat-grid {
+    @apply grid grid-cols-4 gap-3;
+  }
+
+  .phase-badge {
+    @apply px-3 py-1 rounded-full text-sm font-semibold;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4a4a6a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6a6a8a;
+}
